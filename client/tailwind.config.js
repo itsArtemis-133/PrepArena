@@ -1,9 +1,12 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
-  darkMode: 'class', // Enable manual dark mode
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}", // covers all relevant React files
+  ],
+  darkMode: 'class', // or 'media' if you want OS-level control
   theme: {
     extend: {},
   },
   plugins: [],
-};
+}
