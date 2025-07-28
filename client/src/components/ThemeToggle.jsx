@@ -1,25 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useContext } from 'react';
+import ThemeContext from '../context/ThemeContext';
 
-const ThemeToggle = () => {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-    if (isDark) {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
-  }, [isDark]);
-
+export default function ThemeToggle() {
+  const { theme, toggle } = useContext(ThemeContext);
   return (
     <button
-      onClick={() => setIsDark(!isDark)}
-      className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-white px-4 py-2 rounded-md shadow"
+      onClick={toggle}
+      className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+      aria-label="Toggle dark/light mode"
     >
-      {isDark ? "☀️ Light" : "🌙 Dark"}
+      {theme === 'dark' ? '☀️' : '🌙'}
     </button>
   );
-};
-
-export default ThemeToggle;
+}

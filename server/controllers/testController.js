@@ -1,92 +1,101 @@
-const crypto = require("crypto");
-const Test = require("../models/Test");
+// server/controllers/testController.js
+const Test        = require('../models/Test');
+const { v4: uuidv4 } = require('uuid');
 
-exports.createTest = async (req, res) => {
-  const { title, type, testMode, testLength, scheduledDate, pdf } = req.body;
-  const userId = req.user.id;
-
+// Create a new test
+exports.createTest = async (req, res, next) => {
   try {
-    const uniqueLink = crypto.randomBytes(8).toString("hex");
+    const {
+      title, description, pdfUrl,
+      duration, questionCount,
+      type, testMode, scheduledDate, isPublic
+    } = req.body;
 
-    const newTest = new Test({
-      title,
-      type,
-      testMode,
-      testLength,
-      scheduledDate,
-      pdf,
-      createdBy: userId,
-      link: uniqueLink,  // Keep just the hex string, not full BASE_URL
-    });
-
-    await newTest.save();
-    res.status(201).json({ message: "Test created successfully", test: newTest });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to create test", error: err.message });
-  }
-};
-
-exports.cancelTest = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const test = await Test.findById(id);
-    if (!test) return res.status(404).json({ message: "Test not found" });
-
-    test.status = "Cancelled";
-    await test.save();
-
-    res.status(200).json({ message: "Test cancelled successfully", test });
-  } catch (err) {
-    res.status(500).json({ message: "Error cancelling test", error: err.message });
-  }
-};
-
-exports.rescheduleTest = async (req, res) => {
-  const { id } = req.params;
-  const { scheduledDate } = req.body;
-
-  try {
-    const test = await Test.findById(id);
-    if (!test) return res.status(404).json({ message: "Test not found" });
-
-    test.scheduledDate = scheduledDate;
-    test.status = "Scheduled";
-    await test.save();
-
-    res.status(200).json({ message: "Test rescheduled successfully", test });
-  } catch (err) {
-    res.status(500).json({ message: "Error rescheduling test", error: err.message });
-  }
-};
-
-exports.getAllTests = async (req, res) => {
-  try {
-    const tests = await Test.find({ createdBy: req.user.id }).sort({ scheduledDate: 1 });
-    res.status(200).json({ tests });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch tests", error: err.message });
-  }
-};
-
-exports.getPublicTest = async (req, res) => {
-  const { uniqueId } = req.params;
-
-  try {
-    console.log("Received ID:", `"${uniqueId}"`);
-
-    const test = await Test.findOne({ link: uniqueId.trim() });
-
-    if (!test) {
-      console.log("No test found for:", uniqueId.trim());
-      return res.status(404).json({ message: "Test not found" });
+    if (!title || !pdfUrl || !duration || !questionCount) {
+      return res.status(400).json({
+        message: 'Title, PDF URL, duration and question count are required'
+      });
     }
 
-    res.status(200).json({ test });
+    const link = uuidv4();
+    const test = await Test.create({
+      title,
+      description,
+      pdfUrl,
+      duration,
+      questionCount,
+      type,
+      testMode,
+      scheduledDate,
+      status: 'Scheduled',
+      isPublic: !!isPublic,
+      createdBy: req.user.id,
+      link,
+    });
+
+    res.status(201).json({ test });
   } catch (err) {
-    res.status(500).json({ message: "Error fetching test", error: err.message });
+    next(err);
   }
 };
 
+// Get all (protected) tests for this user, optional ?status=
+exports.getAllTests = async (req, res, next) => {
+  try {
+    const filter = { createdBy: req.user.id };
+    if (req.query.status) filter.status = req.query.status;
 
+    const tests = await Test.find(filter)
+      .sort({ scheduledDate: 1 })
+      .populate('createdBy', 'username rating ratersCount');
 
+    res.json({ tests });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Get a public test by its share link
+exports.getPublicTest = async (req, res, next) => {
+  try {
+    const test = await Test.findOne({ link: req.params.uniqueId })
+      .populate('createdBy', 'username rating ratersCount');
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+    res.json({ test });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Cancel a test
+exports.cancelTest = async (req, res, next) => {
+  try {
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+    if (test.createdBy.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+    test.status = 'Cancelled';
+    await test.save();
+    res.json({ test });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Reschedule a test
+exports.rescheduleTest = async (req, res, next) => {
+  try {
+    const { scheduledDate } = req.body;
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+    if (test.createdBy.toString() !== req.user.id) {
+      return res.status(401).json({ message: 'Not authorized' });
+    }
+    test.scheduledDate = scheduledDate;
+    await test.save();
+    res.json({ test });
+  } catch (err) {
+    next(err);
+  }
+};

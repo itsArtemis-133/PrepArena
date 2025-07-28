@@ -1,3 +1,5 @@
-// src/context/AuthContext.js
+// only the context object, no components or hooks
 import { createContext } from 'react';
-export const AuthContext = createContext(null);
+
+const AuthContext = createContext(null);
+export default AuthContext;

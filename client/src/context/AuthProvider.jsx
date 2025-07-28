@@ -1,26 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { AuthContext } from './AuthContext';
+import AuthContext from './AuthContext';
 
-export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
-  const [user, setUser] = useState(null);
+export default function AuthProvider({ children }) {
+  const [token, setToken] = useState(() => {
+    // initialize from localStorage if present
+    return localStorage.getItem('token');
+  });
 
+  const login = (newToken) => {
+    setToken(newToken);
+    localStorage.setItem('token', newToken);
+  };
+
+  const logout = () => {
+    setToken(null);
+    localStorage.removeItem('token');
+  };
+
+  // example effect if you ever want to sync with an API on mount
   useEffect(() => {
-    if (token) {
-      setUser({ token });
-      localStorage.setItem('token', token);
-    } else {
-      setUser(null);
-      localStorage.removeItem('token');
-    }
-  }, [token]);
-
-  const login = (newToken) => setToken(newToken);
-  const logout = () => setToken(null);
+    // could verify token here…
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ token, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}

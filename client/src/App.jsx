@@ -1,49 +1,54 @@
-// src/App.jsx
+// client/src/App.jsx
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 
-import LandingPage  from './pages/LandingPage';
-import Dashboard    from './pages/Dashboard';
+import LandingPage   from './pages/LandingPage';
+import Dashboard     from './pages/Dashboard';
 import TestsCreation from './pages/TestsCreation';
 import TestRunner    from './pages/TestRunner';
+import Layout        from './components/Layout';
 
 const App = () => (
   <Routes>
-    {/* Public Landing */}
+    {/* Public Landing (no header override) */}
     <Route path="/" element={<LandingPage />} />
 
-    {/* Protected Dashboard */}
+    {/* All protected routes share the Layout + Header */}
     <Route
       path="/dashboard"
       element={
         <ProtectedRoute>
-          <Dashboard />
+          <Layout>
+            <Dashboard />
+          </Layout>
         </ProtectedRoute>
       }
     />
 
-    {/* Create a new test */}
     <Route
       path="/tests/create"
       element={
         <ProtectedRoute>
-          <TestsCreation />
+          <Layout>
+            <TestsCreation />
+          </Layout>
         </ProtectedRoute>
       }
     />
 
-    {/* Take a test via shareable link */}
     <Route
       path="/tests/:id/take"
       element={
         <ProtectedRoute>
-          <TestRunner />
+          <Layout>
+            <TestRunner />
+          </Layout>
         </ProtectedRoute>
       }
     />
 
-    {/* Fallback to landing for any other route */}
+    {/* Fallback */}
     <Route path="*" element={<LandingPage />} />
   </Routes>
 );
