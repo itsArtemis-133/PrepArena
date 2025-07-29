@@ -4,7 +4,7 @@ import Header from '../components/Header';
 import api from '../api/axiosConfig';
 import { useAuth } from '../hooks/useAuth';
 
-// Assets (placed in src/assets/)
+// Assets
 import NoOpenTestsImg     from '../assets/no-open-tests.svg';
 import NoUpcomingTestsImg from '../assets/no-upcoming-tests.svg';
 import NoResultsImg       from '../assets/no-results.svg';
@@ -46,8 +46,8 @@ export default function Dashboard() {
     return (
       <>
         <Header />
-        <div className="pt-16 flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-          <span className="text-gray-500 dark:text-gray-400">
+        <div className="pt-16 flex-1 flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-blue-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+          <span className="text-gray-500 dark:text-gray-400 text-xl font-semibold animate-pulse">
             Loading dashboard…
           </span>
         </div>
@@ -57,41 +57,54 @@ export default function Dashboard() {
 
   const Placeholder = ({ imgSrc, alt, text }) => (
     <div className="flex flex-col items-center py-12">
-      <img src={imgSrc} alt={alt} className="w-48 h-48 mb-4" />
-      <p className="text-gray-500 dark:text-gray-400">{text}</p>
+      <img src={imgSrc} alt={alt} className="w-40 h-40 mb-4 opacity-80" />
+      <p className="text-gray-500 dark:text-gray-400 text-lg">{text}</p>
     </div>
   );
 
   return (
     <>
       <Header />
-      <div className="pt-16 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <div className="pt-20 bg-gradient-to-br from-blue-50 via-white to-blue-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
         {/* Hero section */}
         <div className="max-w-7xl mx-auto px-6 pt-10 pb-6">
-          <h1 className="text-4xl font-bold">Welcome back, Aspirant!</h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Your personalized dashboard for UPSC preparation.
-          </p>
-          <div className="mt-6 flex space-x-4">
-            <Link
-              to="/tests/create"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-            >
-              Give Test
-            </Link>
-            <Link
-              to="/tests/create"
-              className="px-5 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-lg"
-            >
-              Create Test
-            </Link>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-4xl font-extrabold text-blue-700 dark:text-blue-300">Welcome back, Aspirant!</h1>
+              <p className="mt-2 text-gray-600 dark:text-gray-400 text-lg">
+                Your personalized dashboard for UPSC preparation.
+              </p>
+              <div className="mt-6 flex space-x-4">
+                <Link
+                  to="/tests/create"
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow transition"
+                >
+                  Give Test
+                </Link>
+                <Link
+                  to="/tests/create"
+                  className="px-6 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-xl font-semibold shadow transition"
+                >
+                  Create Test
+                </Link>
+              </div>
+            </div>
+            <div className="flex justify-center md:justify-end">
+              <img
+                src={DefaultTestImg}
+                alt="Dashboard illustration"
+                className="h-32 w-32 rounded-full object-cover shadow-lg border-4 border-blue-100 dark:border-gray-700"
+              />
+            </div>
           </div>
         </div>
 
-        <main className="max-w-7xl mx-auto px-6 space-y-12 pb-12">
+        <main className="max-w-7xl mx-auto px-6 space-y-16 pb-12">
           {/* 1) Open Tests */}
           <section>
-            <h2 className="text-2xl font-semibold mb-4">Open Tests</h2>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-blue-600 dark:text-blue-300">📝</span> Open Tests
+            </h2>
             {openTests.length === 0 ? (
               <Placeholder
                 imgSrc={NoOpenTestsImg}
@@ -99,20 +112,20 @@ export default function Dashboard() {
                 text="No open tests right now. Check back later!"
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
                 {openTests.map((t) => (
                   <Link
                     key={t._id}
                     to={`/tests/${t.link}/take`}
-                    className="block bg-white dark:bg-gray-800 rounded-xl shadow hover:shadow-md transition"
+                    className="block bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition border border-blue-100 dark:border-gray-700"
                   >
                     <img
                       src={t.thumbnailUrl || DefaultTestImg}
                       alt={t.title}
-                      className="h-40 w-full object-cover rounded-t-xl"
+                      className="h-40 w-full object-cover rounded-t-2xl"
                     />
                     <div className="p-4">
-                      <h3 className="text-lg font-medium">{t.title}</h3>
+                      <h3 className="text-lg font-bold">{t.title}</h3>
                       <p className="mt-1 text-sm text-blue-600 dark:text-blue-400">
                         Scheduled for {fmt(t.scheduledDate)}
                       </p>
@@ -125,8 +138,8 @@ export default function Dashboard() {
 
           {/* 2) Upcoming Tests */}
           <section>
-            <h2 className="text-2xl font-semibold mb-4">
-              Your Upcoming Tests
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-blue-600 dark:text-blue-300">📅</span> Your Upcoming Tests
             </h2>
             {upcoming.length === 0 ? (
               <Placeholder
@@ -135,20 +148,20 @@ export default function Dashboard() {
                 text="You have no scheduled tests."
               />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
                 {upcoming.map((t) => (
                   <Link
                     key={t._id}
                     to={`/tests/${t.link}/take`}
-                    className="block bg-white dark:bg-gray-800 rounded-xl shadow hover:shadow-md transition"
+                    className="block bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition border border-blue-100 dark:border-gray-700"
                   >
                     <img
                       src={t.thumbnailUrl || DefaultTestImg}
                       alt={t.title}
-                      className="h-40 w-full object-cover rounded-t-xl"
+                      className="h-40 w-full object-cover rounded-t-2xl"
                     />
                     <div className="p-4">
-                      <h3 className="text-lg font-medium">{t.title}</h3>
+                      <h3 className="text-lg font-bold">{t.title}</h3>
                       <p className="mt-1 text-sm text-blue-600 dark:text-blue-400">
                         Scheduled for {fmt(t.scheduledDate)}
                       </p>
@@ -161,7 +174,9 @@ export default function Dashboard() {
 
           {/* 3) Recent Results */}
           <section>
-            <h2 className="text-2xl font-semibold mb-4">Recent Results</h2>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-blue-600 dark:text-blue-300">🏆</span> Recent Results
+            </h2>
             {results.length === 0 ? (
               <Placeholder
                 imgSrc={NoResultsImg}
@@ -169,14 +184,14 @@ export default function Dashboard() {
                 text="You haven’t taken any tests yet."
               />
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                <table className="min-w-full bg-white dark:bg-gray-800">
-                  <thead className="bg-gray-100 dark:bg-gray-700">
+              <div className="overflow-x-auto rounded-xl border border-blue-100 dark:border-gray-700 shadow">
+                <table className="min-w-full bg-white dark:bg-gray-800 rounded-xl overflow-hidden">
+                  <thead className="bg-blue-50 dark:bg-gray-700">
                     <tr>
                       {['Test Name','Score','Date'].map((col) => (
                         <th
                           key={col}
-                          className="px-6 py-3 text-left text-sm font-medium text-gray-700 dark:text-gray-200"
+                          className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-200"
                         >
                           {col}
                         </th>
@@ -190,11 +205,11 @@ export default function Dashboard() {
                         className={
                           i % 2 === 0
                             ? 'bg-white dark:bg-gray-800'
-                            : 'bg-gray-50 dark:bg-gray-700'
+                            : 'bg-blue-50 dark:bg-gray-700'
                         }
                       >
                         <td className="px-6 py-4">{r.testTitle}</td>
-                        <td className="px-6 py-4 text-blue-600 dark:text-blue-400">
+                        <td className="px-6 py-4 text-blue-600 dark:text-blue-400 font-bold">
                           {r.score}/{r.total}
                         </td>
                         <td className="px-6 py-4">{fmt(r.takenAt)}</td>
@@ -208,9 +223,11 @@ export default function Dashboard() {
 
           {/* 4) Announcements */}
           <section>
-            <h2 className="text-2xl font-semibold mb-4">Announcements</h2>
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <span className="text-blue-600 dark:text-blue-300">📢</span> Announcements
+            </h2>
             {announcements.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400">
+              <p className="text-gray-500 dark:text-gray-400 text-lg">
                 No announcements.
               </p>
             ) : (
@@ -218,13 +235,13 @@ export default function Dashboard() {
                 {announcements.map((a) => (
                   <li
                     key={a.id}
-                    className="flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden"
+                    className="flex flex-col md:flex-row bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-blue-100 dark:border-gray-700 overflow-hidden"
                   >
                     <div className="flex-1 p-6">
                       <span className="text-xs font-bold text-blue-600 uppercase">
                         {a.type || 'New'}
                       </span>
-                      <h3 className="mt-2 text-lg font-medium">{a.title}</h3>
+                      <h3 className="mt-2 text-lg font-bold">{a.title}</h3>
                       <p className="mt-1 text-gray-600 dark:text-gray-400">
                         {a.text}
                       </p>
