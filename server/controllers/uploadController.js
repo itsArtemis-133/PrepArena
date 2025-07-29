@@ -1,11 +1,11 @@
 const path = require("path");
 
 // Returns { url: "/uploads/filename.pdf" }
+// server/controllers/uploadController.js
 exports.handleUpload = (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "No file uploaded" });
-  }
-  // Build the public URL
+  if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+  // Public URL:
   const url = `/uploads/${req.file.filename}`;
-  res.json({ url });
+  return res.json({ url });
 };
+

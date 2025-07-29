@@ -1,51 +1,55 @@
 // client/src/pages/TestRunner.jsx
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axiosConfig';
+import PdfViewer  from '../components/PdfViewer';
+import Timer      from '../components/Timer';
 import OptionGrid from '../components/OptionGrid';
-import Timer from '../components/Timer';
-import PdfViewer from '../components/PdfViewer';
 
 export default function TestRunner() {
   const { link } = useParams();
   const navigate = useNavigate();
+  const [test, setTest]       = useState(null);
+  const [answers, setAnswers] = useState({});
 
-  const [test, setTest] = useState(null);
-  const [answers, setAnswers] = useState({}); // { 0: 'A', 1: 'C', … }
-
+  // 1️⃣ Fetch test metadata
   useEffect(() => {
-    axios
-      .get(`/api/test/public/${link}`)
-      .then(res => setTest(res.data.test))
-      .catch(() => navigate('/not-found'));
+    api.get(`/test/public/${link}`)
+       .then(res => setTest(res.data.test))
+       .catch(() => navigate('/not-found'));
   }, [link, navigate]);
 
-  if (!test) return <div>Loading…</div>;
-
-  const { pdfUrl, duration, questionCount, scheduledDate } = test;
-
+  // 2️⃣ Submit answers
   const handleSubmit = () => {
-    // TODO: POST answers to your /api/test/:id/submit endpoint
-    console.log('Submitting answers:', answers);
+    api.post(`/test/${test._id}/submit`, { answers })
+       .then(() => navigate(`/results/${test._id}`))
+       .catch(err => console.error('Submit error:', err));
   };
+
+  if (!test) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-xl">Loading test…</p>
+      </div>
+    );
+  }
+
+  const { pdfUrl, duration, questionCount } = test;
 
   return (
     <div className="flex h-screen">
-      {/* Left: PDF Viewer */}
+      {/* PDF */}
       <div className="w-3/5 border-r">
         <PdfViewer fileUrl={pdfUrl} />
       </div>
 
-      {/* Right: OMR Sheet */}
+      {/* Timer + OMR */}
       <div className="w-2/5 p-6 flex flex-col">
-        {/* Timer */}
         <Timer
-          scheduledDate={scheduledDate}
-          duration={duration}
+          duration={duration}       // ← no scheduledDate
           onTimeUp={handleSubmit}
         />
 
-        {/* Option grid */}
         <OptionGrid
           questionCount={questionCount}
           answers={answers}
@@ -54,7 +58,6 @@ export default function TestRunner() {
           }
         />
 
-        {/* Submit button fixed at bottom */}
         <button
           onClick={handleSubmit}
           className="mt-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"

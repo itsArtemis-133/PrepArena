@@ -1,14 +1,25 @@
 // server/controllers/testController.js
-const Test        = require('../models/Test');
+
+const Test   = require('../models/Test');
+const Result = require('../models/Result');
 const { v4: uuidv4 } = require('uuid');
 
-// Create a new test
+/**
+ * POST /api/test
+ * Creates a new test.
+ */
 exports.createTest = async (req, res, next) => {
   try {
     const {
-      title, description, pdfUrl,
-      duration, questionCount,
-      type, testMode, scheduledDate, isPublic
+      title,
+      description,
+      pdfUrl,
+      duration,
+      questionCount,
+      type,
+      testMode,
+      scheduledDate,
+      isPublic
     } = req.body;
 
     if (!title || !pdfUrl || !duration || !questionCount) {
@@ -20,17 +31,17 @@ exports.createTest = async (req, res, next) => {
     const link = uuidv4();
     const test = await Test.create({
       title,
-      description,
+      description: description || '',
       pdfUrl,
       duration,
       questionCount,
-      type,
-      testMode,
+      type: type || '',
+      testMode: testMode || '',
       scheduledDate,
       status: 'Scheduled',
       isPublic: !!isPublic,
       createdBy: req.user.id,
-      link,
+      link
     });
 
     res.status(201).json({ test });
@@ -39,7 +50,11 @@ exports.createTest = async (req, res, next) => {
   }
 };
 
-// Get all (protected) tests for this user, optional ?status=
+/**
+ * GET /api/test
+ * Returns all tests created by the logged-in user.
+ * Optional query: ?status=Scheduled|Cancelled|Completed
+ */
 exports.getAllTests = async (req, res, next) => {
   try {
     const filter = { createdBy: req.user.id };
@@ -55,25 +70,36 @@ exports.getAllTests = async (req, res, next) => {
   }
 };
 
-// Get a public test by its share link
-exports.getPublicTest = async (req, res, next) => {
+/**
+ * GET /api/test/:id
+ * (Optional) Fetch a single test by ID for its creator.
+ */
+exports.getTestById = async (req, res, next) => {
   try {
-    const test = await Test.findOne({ link: req.params.uniqueId })
+    const test = await Test.findById(req.params.id)
       .populate('createdBy', 'username rating ratersCount');
-    if (!test) return res.status(404).json({ message: 'Test not found' });
+    if (!test) {
+      return res.status(404).json({ message: 'Test not found' });
+    }
+    // ensure only creator can fetch
+    if (test.createdBy._id.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
     res.json({ test });
   } catch (err) {
     next(err);
   }
 };
 
-// Cancel a test
+/**
+ * PATCH /api/test/:id/cancel
+ */
 exports.cancelTest = async (req, res, next) => {
   try {
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: 'Test not found' });
     if (test.createdBy.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(403).json({ message: 'Not authorized' });
     }
     test.status = 'Cancelled';
     await test.save();
@@ -83,18 +109,70 @@ exports.cancelTest = async (req, res, next) => {
   }
 };
 
-// Reschedule a test
+/**
+ * PATCH /api/test/:id/reschedule
+ */
 exports.rescheduleTest = async (req, res, next) => {
   try {
     const { scheduledDate } = req.body;
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: 'Test not found' });
     if (test.createdBy.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'Not authorized' });
+      return res.status(403).json({ message: 'Not authorized' });
     }
     test.scheduledDate = scheduledDate;
     await test.save();
     res.json({ test });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/test/:id/submit
+ * Records a user's answers and returns their result.
+ */
+exports.submitTest = async (req, res, next) => {
+  try {
+    const { answers } = req.body;
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    // Simple scoring: full marks
+    const total = test.questionCount;
+    const score = total;
+
+    const result = await Result.create({
+      user:      req.user.id,
+      testLink:  test.link,
+      testTitle: test.title,
+      score,
+      total
+    });
+
+    res.json({ result });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/test/:id/results
+ * Returns the logged-in user's latest result for this test.
+ */
+exports.getMyResults = async (req, res, next) => {
+  try {
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    const results = await Result.find({
+      user:     req.user.id,
+      testLink: test.link
+    })
+      .sort('-createdAt')
+      .limit(1);
+
+    res.json({ results });
   } catch (err) {
     next(err);
   }
