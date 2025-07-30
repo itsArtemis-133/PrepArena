@@ -37,8 +37,9 @@ const App = () => (
       }
     />
 
+    {/* ← Changed :id to :link here */}
     <Route
-      path="/tests/:id/take"
+      path="/tests/:link/take"
       element={
         <ProtectedRoute>
           <Layout>

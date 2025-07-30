@@ -13,11 +13,11 @@
     "@headlessui/react": "^2.2.6",
     "@heroicons/react": "^2.2.0",
     "axios": "^1.11.0",
-    "pdfjs-dist": "^5.3.93",
+    "pdfjs-dist": "^3.11.174",
     "prop-types": "^15.8.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-pdf": "^10.0.1",
+    "react-pdf": "^7.7.2",
     "react-router-dom": "^7.7.0"
   },
   "devDependencies": {

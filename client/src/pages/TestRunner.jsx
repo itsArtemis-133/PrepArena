@@ -30,10 +30,12 @@ export default function TestRunner() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen pt-16">
       {/* Left: PDF Viewer */}
       <div className="w-3/5 border-r">
-        <PdfViewer fileUrl={pdfUrl} />
+        <PdfViewer fileUrl={
+  pdfUrl.startsWith('/uploads/') ? pdfUrl : `/uploads/${pdfUrl}`
+} />
       </div>
 
       {/* Right: OMR Sheet */}
