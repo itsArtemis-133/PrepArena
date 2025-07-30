@@ -11,7 +11,7 @@
 
 
 // Expose uploaded files
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
  // 👉 Route imports first
  const authRoutes = require("./routes/auth");

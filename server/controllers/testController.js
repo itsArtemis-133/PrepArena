@@ -99,3 +99,12 @@ exports.rescheduleTest = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.submitAnswersController = async (req, res) => {
+  const testId = req.params.id;
+  const { answers } = req.body;
+  const userId = req.user.id;
+  // TODO: Validate, grade, store result
+  res.json({ success: true, score: 42 }); // Dummy response
+};
+
