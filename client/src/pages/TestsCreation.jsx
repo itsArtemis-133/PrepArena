@@ -1,7 +1,7 @@
-// client/src/pages/TestsCreation.jsx
 import React, { useState } from "react";
 import Header from "../components/Header";
 import PDFUpload from "../components/PDFUpload";
+import AnswerKeyStep from "../components/AnswerKeyStep";
 import axios from "../api/axiosConfig";
 import {
   ChevronLeftIcon,
@@ -13,40 +13,52 @@ import {
 } from "@heroicons/react/24/outline";
 import { useNavigate } from "react-router-dom";
 
-const Steps = ["Upload PDF", "Configure", "Preview & Publish"];
+const Steps = [
+  "Upload Questions PDF",
+  "Extract Answer Key",
+  "Configure",
+  "Preview & Publish",
+];
 
 export default function TestsCreation() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
 
-  // Step 1 state
+  // Step 1
   const [pdfUrl, setPdfUrl] = useState("");
-  const [answerKeyUrl, setAnswerKeyUrl] = useState("");
 
-  // Step 2 state
+  // Step 2
+  const [answerKey, setAnswerKey] = useState({});
+  const [questionCount, setQuestionCount] = useState(""); // User must provide before extracting
+
+  // Step 3
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
   const [testMode, setTestMode] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [duration, setDuration] = useState("");
-  const [questionCount, setQuestionCount] = useState("");
   const [isPublic, setIsPublic] = useState(false);
 
-  // Validation state
+  // UI State
   const [errors, setErrors] = useState({});
-
-  // Publish state
   const [shareLink, setShareLink] = useState("");
   const [publishing, setPublishing] = useState(false);
 
-  // Validation logic
+  // Validation
   const validateStep = () => {
     let errs = {};
     if (step === 0) {
       if (!pdfUrl) errs.pdfUrl = "Questions PDF is required.";
     }
     if (step === 1) {
+      if (!questionCount || questionCount <= 0) errs.questionCount = "Question count required before extracting.";
+      if (!answerKey || Object.keys(answerKey).length === 0)
+        errs.answerKey = "Extract and review the answer key.";
+      if (Object.keys(answerKey).length !== Number(questionCount))
+        errs.answerKey = "Answer key count does not match question count.";
+    }
+    if (step === 2) {
       if (!title) errs.title = "Test title is required.";
       if (!description) errs.description = "Description is required.";
       if (!type) errs.type = "Type is required.";
@@ -77,7 +89,7 @@ export default function TestsCreation() {
         questionCount: Number(questionCount),
         isPublic,
         pdfUrl,
-        answerKeyUrl,
+        answerKey,
       };
       const res = await axios.post("/test", payload);
       setShareLink(`${window.location.origin}/tests/${res.data.test.link}/take`);
@@ -101,7 +113,9 @@ export default function TestsCreation() {
       </div>
       <div className="mb-2">
         <span className="font-semibold">Description:</span>
-        <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-line">{description}</div>
+        <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-line">
+          {description}
+        </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
         <div>
@@ -125,19 +139,28 @@ export default function TestsCreation() {
       <div className="mb-2">
         <span className="font-semibold">Public:</span> {isPublic ? "Yes" : "No"}
       </div>
+      <div className="mb-2">
+        <span className="font-semibold">Answer Key Sample:</span>{" "}
+        {answerKey && (
+          <span className="text-xs text-gray-600 dark:text-gray-300">
+            {Object.entries(answerKey)
+              .slice(0, 10)
+              .map(([q, a]) => `${q}:${a}`)
+              .join(", ")}
+            {Object.keys(answerKey).length > 10 ? "..." : ""}
+          </span>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <DocumentCheckIcon className="h-5 w-5 text-green-600" />
-        <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+        <a
+          href={pdfUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline text-blue-600"
+        >
           Questions PDF
         </a>
-        {answerKeyUrl && (
-          <>
-            <DocumentCheckIcon className="h-5 w-5 text-green-600" />
-            <a href={answerKeyUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
-              Answer Key PDF
-            </a>
-          </>
-        )}
       </div>
     </div>
   );
@@ -203,7 +226,7 @@ export default function TestsCreation() {
             ))}
           </div>
 
-          {/* Step 1: Upload PDFs */}
+          {/* Step 1: Upload Questions PDF */}
           {step === 0 && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
               <PDFUpload
@@ -222,22 +245,47 @@ export default function TestsCreation() {
                   {errors.pdfUrl}
                 </div>
               )}
+            </div>
+          )}
 
-              <PDFUpload
-                label="Upload Answer Key (optional)"
-                onUpload={setAnswerKeyUrl}
+          {/* Step 2: Extract Answer Key */}
+          {step === 1 && (
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
+              <div className="mb-2">
+                <label className="block text-sm font-medium">
+                  How many questions?
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={questionCount}
+                  onChange={e => { setQuestionCount(e.target.value); setAnswerKey({}); }}
+                  className="mt-1 w-24 p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                />
+                {errors.questionCount && (
+                  <div className="flex items-center mt-1 text-red-600 text-sm">
+                    <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                    {errors.questionCount}
+                  </div>
+                )}
+              </div>
+              <AnswerKeyStep
+                questionCount={questionCount}
+                onAnswerKeyReady={setAnswerKey}
+                answerKey={answerKey}
+                setAnswerKey={setAnswerKey}
               />
-              {answerKeyUrl && (
-                <div className="flex items-center mt-2 text-green-600">
-                  <DocumentCheckIcon className="h-5 w-5 mr-1" />
-                  <span>Answer Key PDF uploaded</span>
+              {errors.answerKey && (
+                <div className="flex items-center mt-2 text-red-600 text-sm">
+                  <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                  {errors.answerKey}
                 </div>
               )}
             </div>
           )}
 
-          {/* Step 2: Configure */}
-          {step === 1 && (
+          {/* Step 3: Configure */}
+          {step === 2 && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
               <div>
                 <label className="block text-sm font-medium">
@@ -354,7 +402,7 @@ export default function TestsCreation() {
                   <input
                     type="number"
                     value={questionCount}
-                    onChange={(e) => setQuestionCount(e.target.value)}
+                    onChange={e => setQuestionCount(e.target.value)}
                     className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                   />
                   {errors.questionCount && (
@@ -381,8 +429,8 @@ export default function TestsCreation() {
             </div>
           )}
 
-          {/* Step 3: Preview & Publish */}
-          {step === 2 && <PreviewCard />}
+          {/* Step 4: Preview & Publish */}
+          {step === 3 && <PreviewCard />}
 
           {/* Share link screen */}
           {step === Steps.length && (

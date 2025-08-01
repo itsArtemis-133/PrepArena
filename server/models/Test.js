@@ -20,6 +20,12 @@ const testSchema = new mongoose.Schema({
 
   createdBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   link:          { type: String, required: true, unique: true },
+  answerKey: {
+    type: Map,
+    of: String,
+    default: {},   // No problem for old records!
+    required: false
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Test', testSchema);

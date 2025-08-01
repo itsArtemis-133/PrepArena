@@ -10,12 +10,12 @@ export default function TestRunner() {
   const navigate = useNavigate();
 
   const [test, setTest] = useState(null);
-  const [answers, setAnswers] = useState({}); // { 0: 'A', 1: 'C', … }
-
-  // Test status state for timer logic
+  const [answers, setAnswers] = useState({});
   const [isTestStarted, setIsTestStarted] = useState(false);
   const [disableGrid, setDisableGrid] = useState(true);
+  const [submitState, setSubmitState] = useState('idle'); // idle | submitting | done
 
+  // Fetch test details by link param
   useEffect(() => {
     axios
       .get(`/api/test/public/${link}`)
@@ -23,22 +23,31 @@ export default function TestRunner() {
       .catch(() => navigate('/not-found'));
   }, [link, navigate]);
 
-  if (!test) return <div>Loading…</div>;
+  if (!test) return <div className="text-center mt-12">Loading…</div>;
 
-  const { pdfUrl, duration, questionCount, scheduledDate } = test;
+  const { pdfUrl, duration, questionCount, scheduledDate, _id: testId } = test;
 
-  const handleSubmit = () => {
-    // TODO: POST answers to your /api/test/:id/submit endpoint
-    console.log('Submitting answers:', answers);
-    // Add submit logic here!
-  };
-
-  // Fix for pdfUrl: Allow both relative and already-prefixed URLs.
+  // Utility: Robust path for both local and remote PDFs
   const getPdfPath = () => {
     if (!pdfUrl) return '';
     if (pdfUrl.startsWith('/uploads/')) return pdfUrl;
     if (pdfUrl.startsWith('http')) return pdfUrl;
     return `/uploads/${pdfUrl}`;
+  };
+
+  // Robust submit logic (debounced, disables on submit, shows status)
+  const handleSubmit = async () => {
+    if (!isTestStarted || disableGrid || submitState !== 'idle') return;
+    setSubmitState('submitting');
+    try {
+      await axios.post(`/api/test/${testId}/submit`, { answers });
+      setSubmitState('done');
+      alert('Test submitted! Your answers have been saved.');
+      // Optionally: navigate(`/results/${testId}`);
+    } catch  {
+      alert('Failed to submit, please try again.');
+      setSubmitState('idle');
+    }
   };
 
   return (
@@ -50,13 +59,12 @@ export default function TestRunner() {
 
       {/* Right: OMR Sheet */}
       <div className="
-  w-2/5 p-0 flex flex-col h-full
-  bg-gradient-to-b from-blue-100/80 via-white to-blue-50
-  dark:from-slate-900 dark:via-slate-800 dark:to-slate-900
-  border-l border-blue-100 dark:border-slate-800
-  shadow-xl
-  transition-colors duration-300
-">
+        w-2/5 p-0 flex flex-col h-full
+        bg-gradient-to-b from-blue-100/80 via-white to-blue-50
+        dark:from-slate-900 dark:via-slate-800 dark:to-slate-900
+        border-l border-blue-100 dark:border-slate-800
+        shadow-xl transition-colors duration-300
+      ">
         {/* Timer */}
         <div className="
           sticky top-0 z-10
@@ -75,7 +83,6 @@ export default function TestRunner() {
             setDisableGrid={setDisableGrid}
           />
         </div>
-
         {/* Option grid */}
         <div className="flex-1 overflow-y-auto px-4 py-1">
           <OptionGrid
@@ -87,7 +94,6 @@ export default function TestRunner() {
             }
           />
         </div>
-
         {/* Submit button fixed at bottom */}
         <div className="
           sticky bottom-0 z-10 px-6 py-4
@@ -97,13 +103,17 @@ export default function TestRunner() {
         ">
           <button
             onClick={handleSubmit}
-            disabled={disableGrid}
+            disabled={disableGrid || submitState !== 'idle'}
             className={`w-full py-3 text-lg rounded-xl font-semibold shadow-lg transition-all
               bg-gradient-to-r from-indigo-500 to-blue-400 hover:from-indigo-600 hover:to-blue-500 text-white
-              ${disableGrid ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-95'}
+              ${disableGrid || submitState !== 'idle'
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:scale-[1.02] active:scale-95'}
             `}
           >
-            Submit Test
+            {submitState === 'idle' && 'Submit Test'}
+            {submitState === 'submitting' && 'Submitting...'}
+            {submitState === 'done' && 'Submitted!'}
           </button>
         </div>
       </div>

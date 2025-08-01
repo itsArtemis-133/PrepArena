@@ -47,16 +47,17 @@ export default function OptionGrid({
                     />
                     {/* Bubble with centered label */}
                     <span
-                      className={`
-                        flex items-center justify-center w-8 h-8 rounded-full border-2 font-bold text-base
-                        transition-all duration-150 select-none
-                        ${isChecked
-                          ? "border-indigo-500 dark:border-indigo-300 bg-indigo-500 dark:bg-indigo-400 text-white shadow ring-2 ring-indigo-300 dark:ring-indigo-500"
-                          : "border-gray-400 dark:border-gray-600 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-200"}
-                      `}
-                    >
-                      {label}
-                    </span>
+  className={`
+    flex items-center justify-center w-8 h-8 rounded-full border-2 font-bold text-base
+    transition-all duration-150 select-none
+    ${isChecked
+      ? "border-indigo-500 dark:border-indigo-300 bg-indigo-500 dark:bg-indigo-400 text-white shadow ring-2 ring-indigo-300 dark:ring-indigo-500"
+      : "border-blue-400 dark:border-gray-600 bg-white dark:bg-slate-800 text-blue-800 dark:text-gray-200"}
+  `}
+>
+  {label}
+</span>
+
                   </label>
                 );
               })}
