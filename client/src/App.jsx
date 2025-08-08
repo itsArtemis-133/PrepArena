@@ -6,8 +6,11 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage   from './pages/LandingPage';
 import Dashboard     from './pages/Dashboard';
 import TestsCreation from './pages/TestsCreation';
+import TestBridge from './pages/TestBridge';
 import TestRunner    from './pages/TestRunner';
 import Layout        from './components/Layout';
+
+
 
 const App = () => (
   <Routes>
@@ -36,6 +39,19 @@ const App = () => (
         </ProtectedRoute>
       }
     />
+
+   {/* TestBridge route (for registration, info, start test, etc) */}
+    <Route
+      path="/test/:link"
+      element={
+        <ProtectedRoute>
+          <Layout>
+            <TestBridge />
+          </Layout>
+        </ProtectedRoute>
+      }
+    />
+
 
     {/* ← Changed :id to :link here */}
     <Route

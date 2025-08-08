@@ -8,14 +8,14 @@ exports.createTest = async (req, res, next) => {
     const {
       title, description, pdfUrl,
       duration, questionCount,
-      type, testMode, scheduledDate, isPublic
+      type, testMode, scheduledDate, isPublic, subject
     } = req.body;
 
-    if (!title || !pdfUrl || !duration || !questionCount) {
-      return res.status(400).json({
-        message: 'Title, PDF URL, duration and question count are required'
-      });
-    }
+    if (!title || !pdfUrl || !duration || !questionCount || !subject || !scheduledDate) {
+  return res.status(400).json({
+    message: 'Title, PDF URL, duration, question count, subject, and scheduled date/time are required'
+  });
+}
 
     const link = uuidv4();
     const test = await Test.create({
@@ -26,7 +26,8 @@ exports.createTest = async (req, res, next) => {
       questionCount,
       type,
       testMode,
-      scheduledDate,
+      subject,
+      scheduledDate: new Date(scheduledDate),
       status: 'Scheduled',
       isPublic: !!isPublic,
       createdBy: req.user.id,
@@ -106,5 +107,36 @@ exports.submitAnswersController = async (req, res) => {
   const userId = req.user.id;
   // TODO: Validate, grade, store result
   res.json({ success: true, score: 42 }); // Dummy response
+};
+
+// POST /api/test/register/:id
+exports.registerForTest = async (req, res) => {
+  try {
+    const test = await Test.findOne({ link: req.params.id });
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    // Already registered?
+    if (test.registrations.includes(req.user.id)) {
+      return res.json({ registered: true });
+    }
+
+    test.registrations.push(req.user.id);
+    await test.save();
+    res.json({ registered: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+// GET /api/test/registered/:id
+exports.checkRegistration = async (req, res) => {
+  try {
+    const test = await Test.findOne({ link: req.params.id });
+    if (!test) return res.status(404).json({ message: 'Test not found' });
+
+    const isRegistered = test.registrations.includes(req.user.id);
+    res.json({ registered: isRegistered });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
 };
 

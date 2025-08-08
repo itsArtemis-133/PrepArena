@@ -8,7 +8,9 @@ const {
   getAllTests,
   getPublicTest,
   cancelTest,
-  rescheduleTest
+  rescheduleTest,
+  registerForTest,
+  checkRegistration
 } = require('../controllers/testController');
 const { getPublicTests } = require('../controllers/publicTestController');
 const multer = require('multer');
@@ -49,5 +51,6 @@ router.post('/',              authMiddleware, createTest);
 router.get('/',               authMiddleware, getAllTests);
 router.patch('/:id/cancel',   authMiddleware, cancelTest);
 router.patch('/:id/reschedule', authMiddleware, rescheduleTest);
-
+router.post('/:id/register', authMiddleware, registerForTest);
+router.get('/registered/:id', authMiddleware, checkRegistration);
 module.exports = router;

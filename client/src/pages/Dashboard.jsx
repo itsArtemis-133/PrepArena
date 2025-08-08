@@ -116,7 +116,7 @@ export default function Dashboard() {
                 {openTests.map((t) => (
                   <Link
                     key={t._id}
-                    to={`/tests/${t.link}/take`}
+                    to={`/test/${t.link}`}
                     className="block bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition border border-blue-100 dark:border-gray-700"
                   >
                     <img
@@ -152,7 +152,7 @@ export default function Dashboard() {
                 {upcoming.map((t) => (
                   <Link
                     key={t._id}
-                    to={`/tests/${t.link}/take`}
+                    to={`/test/${t.link}`}
                     className="block bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-xl transition border border-blue-100 dark:border-gray-700"
                   >
                     <img

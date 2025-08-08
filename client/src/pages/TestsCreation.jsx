@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Header from "../components/Header";
 import PDFUpload from "../components/PDFUpload";
 import AnswerKeyStep from "../components/AnswerKeyStep";
@@ -24,14 +24,16 @@ export default function TestsCreation() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
 
-  // Step 1
-  const [pdfUrl, setPdfUrl] = useState("");
+  // --- Step 1: Question PDF Upload ---
+  const [questionPdfFile, setQuestionPdfFile] = useState(null);
+  const [questionPdfUrl, setQuestionPdfUrl] = useState("");
 
-  // Step 2
+  // --- Step 2: Answer Key Extraction ---
   const [answerKey, setAnswerKey] = useState({});
-  const [questionCount, setQuestionCount] = useState(""); // User must provide before extracting
+  const [questionCount, setQuestionCount] = useState("");
+  // (If using separate AnswerKey PDF upload, add those here)
 
-  // Step 3
+  // --- Step 3: Test Configuration ---
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState("");
@@ -39,17 +41,46 @@ export default function TestsCreation() {
   const [scheduledDate, setScheduledDate] = useState("");
   const [duration, setDuration] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const [subject, setSubject] = useState("");
 
-  // UI State
+
+  // --- UI State ---
   const [errors, setErrors] = useState({});
   const [shareLink, setShareLink] = useState("");
   const [publishing, setPublishing] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  // Validation
+  // --- Form Validation ---
+
+  // Step validation for enabling/disabling "Next" button
+  const isStepValid = () => {
+    if (step === 0) {
+      return !!(questionPdfFile || questionPdfUrl);
+    }
+    if (step === 1) {
+      if (!questionCount || questionCount <= 0) return false;
+      if (!answerKey || Object.keys(answerKey).length === 0) return false;
+      if (Object.keys(answerKey).length !== Number(questionCount)) return false;
+      return true;
+    }
+    if (step === 2) {
+      if (!title) return false;
+      if (!description) return false;
+      if (!type) return false;
+      if (!testMode) return false;
+      if (!scheduledDate) return false;
+      if (!duration || duration <= 0) return false;
+      if (!questionCount || questionCount <= 0) return false;
+      return true;
+    }
+    return true;
+  };
+
+  // Show error on Next/back if not valid
   const validateStep = () => {
     let errs = {};
     if (step === 0) {
-      if (!pdfUrl) errs.pdfUrl = "Questions PDF is required.";
+      if (!questionPdfFile && !questionPdfUrl) errs.pdfUrl = "Questions PDF is required.";
     }
     if (step === 1) {
       if (!questionCount || questionCount <= 0) errs.questionCount = "Question count required before extracting.";
@@ -63,7 +94,11 @@ export default function TestsCreation() {
       if (!description) errs.description = "Description is required.";
       if (!type) errs.type = "Type is required.";
       if (!testMode) errs.testMode = "Mode is required.";
-      if (!scheduledDate) errs.scheduledDate = "Scheduled date is required.";
+      if (!subject) errs.subject = "Subject is required.";
+      if (!scheduledDate) errs.scheduledDate = "Scheduled date/time is required.";
+      if (scheduledDate && new Date(scheduledDate) < new Date())
+        errs.scheduledDate = "Scheduled date/time cannot be in the past.";
+
       if (!duration || duration <= 0) errs.duration = "Duration must be positive.";
       if (!questionCount || questionCount <= 0) errs.questionCount = "Question count must be positive.";
     }
@@ -71,14 +106,76 @@ export default function TestsCreation() {
     return Object.keys(errs).length === 0;
   };
 
+  // Instantly clear the "answer key count mismatch" error if fixed
+  useEffect(() => {
+    if (
+      errors.answerKey &&
+      answerKey &&
+      Object.keys(answerKey).length === Number(questionCount)
+    ) {
+      setErrors((prev) => {
+        const newErrs = { ...prev };
+        delete newErrs.answerKey;
+        return newErrs;
+      });
+    }
+    // Also clear questionCount error if now valid
+    if (
+      errors.questionCount &&
+      questionCount &&
+      Number(questionCount) > 0
+    ) {
+      setErrors((prev) => {
+        const newErrs = { ...prev };
+        delete newErrs.questionCount;
+        return newErrs;
+      });
+    }
+  }, [answerKey, questionCount, errors.answerKey, errors.questionCount]);
+
+  // Step Navigation
   const handleNext = () => {
     if (validateStep()) setStep((s) => Math.min(s + 1, Steps.length - 1));
   };
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
+  // Upload file and get URL (on publish)
+  const uploadPdfAndGetUrl = async (file) => {
+    if (!file) return "";
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await axios.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return res.data.url;
+    } catch {
+      setErrors((prev) => ({
+        ...prev,
+        pdfUrl: "Failed to upload PDF. Try again.",
+      }));
+      return "";
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Submit the test for publishing
   const handleSubmit = async () => {
     setPublishing(true);
+    setErrors({});
     try {
+      let uploadedQuestionUrl = questionPdfUrl;
+      if (questionPdfFile && !questionPdfUrl) {
+        uploadedQuestionUrl = await uploadPdfAndGetUrl(questionPdfFile);
+        setQuestionPdfUrl(uploadedQuestionUrl);
+      }
+      if (!uploadedQuestionUrl) {
+        setErrors({ pdfUrl: "Failed to upload Questions PDF." });
+        setPublishing(false);
+        return;
+      }
       const payload = {
         title,
         description,
@@ -88,8 +185,9 @@ export default function TestsCreation() {
         duration: Number(duration),
         questionCount: Number(questionCount),
         isPublic,
-        pdfUrl,
+        pdfUrl: uploadedQuestionUrl,
         answerKey,
+        subject
       };
       const res = await axios.post("/test", payload);
       setShareLink(`${window.location.origin}/tests/${res.data.test.link}/take`);
@@ -101,7 +199,7 @@ export default function TestsCreation() {
     }
   };
 
-  // Preview card
+  // --- UI Render ---
   const PreviewCard = () => (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
       <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
@@ -153,14 +251,16 @@ export default function TestsCreation() {
       </div>
       <div className="flex items-center gap-2">
         <DocumentCheckIcon className="h-5 w-5 text-green-600" />
-        <a
-          href={pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline text-blue-600"
-        >
-          Questions PDF
-        </a>
+        {questionPdfUrl && (
+          <a
+            href={questionPdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline text-blue-600"
+          >
+            Questions PDF
+          </a>
+        )}
       </div>
     </div>
   );
@@ -231,9 +331,14 @@ export default function TestsCreation() {
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
               <PDFUpload
                 label="Upload Questions PDF"
-                onUpload={setPdfUrl}
+                onUpload={(file, url) => {
+                  setQuestionPdfFile(file);
+                  setQuestionPdfUrl(url);
+                }}
+                existingFile={questionPdfFile}
+                existingUrl={questionPdfUrl}
               />
-              {pdfUrl && (
+              {questionPdfUrl && (
                 <div className="flex items-center mt-2 text-green-600">
                   <DocumentCheckIcon className="h-5 w-5 mr-1" />
                   <span>Questions PDF uploaded</span>
@@ -259,7 +364,13 @@ export default function TestsCreation() {
                   type="number"
                   min={1}
                   value={questionCount}
-                  onChange={e => { setQuestionCount(e.target.value); setAnswerKey({}); }}
+                  onChange={e => {
+                    setQuestionCount(e.target.value);
+                    // Optionally: clear answerKey if questionCount shrinks
+                    if (Number(e.target.value) < Object.keys(answerKey).length) {
+                      setAnswerKey({});
+                    }
+                  }}
                   className="mt-1 w-24 p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                 />
                 {errors.questionCount && (
@@ -274,6 +385,7 @@ export default function TestsCreation() {
                 onAnswerKeyReady={setAnswerKey}
                 answerKey={answerKey}
                 setAnswerKey={setAnswerKey}
+                // If you want to allow answer key PDF upload, pass those props here
               />
               {errors.answerKey && (
                 <div className="flex items-center mt-2 text-red-600 text-sm">
@@ -287,7 +399,8 @@ export default function TestsCreation() {
           {/* Step 3: Configure */}
           {step === 2 && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
-              <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                 <label className="block text-sm font-medium">
                   Test Title
                 </label>
@@ -304,6 +417,25 @@ export default function TestsCreation() {
                   </div>
                 )}
               </div>
+              <div>
+                <label className="block text-sm font-medium">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={e => setSubject(e.target.value)}
+                  className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                />
+                {errors.subject && (
+                  <div className="flex items-center mt-1 text-red-600 text-sm">
+                    <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                    {errors.subject}
+                  </div>
+                )}
+              </div>
+              </div>
+              
 
               <div>
                 <label className="block text-sm font-medium">
@@ -343,7 +475,7 @@ export default function TestsCreation() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium">
-                    Mode (e.g. Practice)
+                    Mode (e.g. FLT, HLT)
                   </label>
                   <input
                     type="text"
@@ -363,12 +495,13 @@ export default function TestsCreation() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium">
-                    Scheduled Date
+                    Scheduled Date & Time
                   </label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().slice(0,16)}
+                    onChange={e => setScheduledDate(e.target.value)}
                     className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                   />
                   {errors.scheduledDate && (
@@ -476,6 +609,7 @@ export default function TestsCreation() {
                 <button
                   onClick={handleNext}
                   className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  disabled={!isStepValid()}
                 >
                   Next
                   <ChevronRightIcon className="h-5 w-5 ml-1" />
@@ -483,7 +617,7 @@ export default function TestsCreation() {
               ) : (
                 <button
                   onClick={handleSubmit}
-                  disabled={publishing}
+                  disabled={publishing || uploading || !isStepValid()}
                   className="flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
                 >
                   {publishing ? "Publishing..." : "Publish Test"}
