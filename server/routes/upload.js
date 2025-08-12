@@ -1,34 +1,27 @@
 // server/routes/upload.js
-const express = require('express');
-const multer  = require('multer');
-const path    = require('path');
-const protect = require('../middleware/authMiddleware');       // import the middleware function
-const { handleUpload } = require('../controllers/uploadController');
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const multer = require("multer");
 
 const router = express.Router();
 
-// Configure Multer storage
-const storage = multer.diskStorage({
-  destination(req, file, cb) {
-    cb(null, path.join(__dirname, '../uploads'));
-  },
-  filename(req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const name = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, `${name}${ext}`);
-  }
-});
+const uploadDir = path.join(__dirname, "..", "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (_req, file, cb) => {
+    const stamp = Date.now();
+    const safe = file.originalname.replace(/\s+/g, "_");
+    cb(null, `${stamp}-${safe}`);
+  },
+});
 const upload = multer({ storage });
 
-// @route   POST /api/upload
-// @desc    Upload a single PDF or answer-key file
-// @access  Private
-router.post(
-  '/',
-  protect,
-  upload.single('file'),
-  handleUpload
-);
+router.post("/upload", upload.single("file"), (req, res) => {
+  const rel = `/uploads/${req.file.filename}`;
+  res.json({ url: rel });
+});
 
 module.exports = router;

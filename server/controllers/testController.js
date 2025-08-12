@@ -1,142 +1,159 @@
 // server/controllers/testController.js
-const Test        = require('../models/Test');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require("uuid");
+const Test = require("../models/Test");
+let Submission;
+try { Submission = require("../models/Submission"); } catch {}
 
-// Create a new test
+// helpers
+const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+const shape = (doc, userId = null) => {
+  const d = doc.toObject ? doc.toObject() : doc;
+  return {
+    _id: d._id,
+    link: d.link || "",
+    title: d.title || "",
+    description: d.description || "",
+    subject: d.subject || "",
+    type: d.type || "",
+    testMode: d.testMode || "",
+    duration: d.duration ?? null,
+    questionCount: d.questionCount ?? null,
+    scheduledDate: d.scheduledDate || null,
+    status: d.status || "Scheduled",
+    isPublic: !!d.isPublic,
+    pdfUrl: d.pdfUrl || "",
+    createdBy: d.createdBy
+      ? (typeof d.createdBy === "object"
+          ? { _id: String(d.createdBy._id || d.createdBy), username: d.createdBy.username || "" }
+          : { _id: String(d.createdBy), username: "" })
+      : null,
+    isCreator: userId ? String(d.createdBy) === String(userId) : false,
+  };
+};
+
+// POST /api/test
 exports.createTest = async (req, res, next) => {
   try {
     const {
-      title, description, pdfUrl,
-      duration, questionCount,
-      type, testMode, scheduledDate, isPublic, subject
+      title, description, subject, type, testMode,
+      scheduledDate, duration, questionCount, isPublic = false,
+      pdfUrl, answerKey,
     } = req.body;
 
-    if (!title || !pdfUrl || !duration || !questionCount || !subject || !scheduledDate) {
-  return res.status(400).json({
-    message: 'Title, PDF URL, duration, question count, subject, and scheduled date/time are required'
-  });
-}
-
-    const link = uuidv4();
-    const test = await Test.create({
-      title,
-      description,
-      pdfUrl,
-      duration,
-      questionCount,
-      type,
-      testMode,
-      subject,
-      scheduledDate: new Date(scheduledDate),
-      status: 'Scheduled',
+    const doc = await Test.create({
+      title: title?.trim(),
+      description: description || "",
+      subject: subject || "",
+      type: type || "",
+      testMode: testMode || "",
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : null,
+      duration: n(duration),
+      questionCount: n(questionCount),
       isPublic: !!isPublic,
-      createdBy: req.user.id,
-      link,
+      pdfUrl: pdfUrl || "",
+      answerKey: answerKey || {},
+      link: uuidv4(),
+      createdBy: req.user?.id || null,
+      registrations: req.user?.id ? [req.user.id] : [],
+      status: "Scheduled",
     });
 
-    res.status(201).json({ test });
-  } catch (err) {
-    next(err);
-  }
+    res.status(201).json({ test: shape(doc, req.user?.id) });
+  } catch (err) { next(err); }
 };
 
-// Get all (protected) tests for this user, optional ?status=
-exports.getAllTests = async (req, res, next) => {
+// GET /api/test (my tests)
+exports.getMyTests = async (req, res, next) => {
   try {
-    const filter = { createdBy: req.user.id };
-    if (req.query.status) filter.status = req.query.status;
+    const { status } = req.query;
+    const q = { createdBy: req.user?.id };
+    if (status) q.status = status;
+    const docs = await Test.find(q).sort({ scheduledDate: 1, createdAt: -1 }).populate("createdBy", "username");
+    res.json({ tests: docs.map(d => shape(d, req.user?.id)) });
+  } catch (err) { next(err); }
+};
 
-    const tests = await Test.find(filter)
-      .sort({ scheduledDate: 1 })
-      .populate('createdBy', 'username rating ratersCount');
+// GET /api/test/public
+exports.getPublicTests = async (req, res) => {
+  try {
+    const now = new Date();
+    const docs = await Test.find({
+      isPublic: true,
+      $or: [
+        { scheduledDate: { $exists: false } },
+        { scheduledDate: null },
+        { scheduledDate: { $gte: now } },
+      ],
+    })
+      .sort({ scheduledDate: 1, createdAt: -1 })
+      .populate("createdBy", "username");
 
-    res.json({ tests });
+    res.json({ tests: docs.map(d => shape(d, req.user?.id)) });
   } catch (err) {
-    next(err);
+    console.error("getPublicTests error:", err);
+    res.json({ tests: [] }); // never 500 the dashboard
   }
 };
 
-// Get a public test by its share link
+// GET /api/test/public/:link
 exports.getPublicTest = async (req, res, next) => {
   try {
-    const test = await Test.findOne({ link: req.params.uniqueId })
-      .populate('createdBy', 'username rating ratersCount');
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-    res.json({ test });
-  } catch (err) {
-    next(err);
-  }
+    const doc = await Test.findOne({ link: req.params.link }).populate("createdBy", "username");
+    if (!doc) return res.status(404).json({ message: "Test not found" });
+    res.json({ test: shape(doc, req.user?.id) });
+  } catch (err) { next(err); }
 };
 
-// Cancel a test
-exports.cancelTest = async (req, res, next) => {
-  try {
-    const test = await Test.findById(req.params.id);
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-    if (test.createdBy.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'Not authorized' });
-    }
-    test.status = 'Cancelled';
-    await test.save();
-    res.json({ test });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// Reschedule a test
-exports.rescheduleTest = async (req, res, next) => {
-  try {
-    const { scheduledDate } = req.body;
-    const test = await Test.findById(req.params.id);
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-    if (test.createdBy.toString() !== req.user.id) {
-      return res.status(401).json({ message: 'Not authorized' });
-    }
-    test.scheduledDate = scheduledDate;
-    await test.save();
-    res.json({ test });
-  } catch (err) {
-    next(err);
-  }
-};
-
-exports.submitAnswersController = async (req, res) => {
-  const testId = req.params.id;
-  const { answers } = req.body;
-  const userId = req.user.id;
-  // TODO: Validate, grade, store result
-  res.json({ success: true, score: 42 }); // Dummy response
-};
-
-// POST /api/test/register/:id
-exports.registerForTest = async (req, res) => {
-  try {
-    const test = await Test.findOne({ link: req.params.id });
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-
-    // Already registered?
-    if (test.registrations.includes(req.user.id)) {
-      return res.json({ registered: true });
-    }
-
-    test.registrations.push(req.user.id);
-    await test.save();
-    res.json({ registered: true });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-// GET /api/test/registered/:id
+// GET /api/test/registered/:link
 exports.checkRegistration = async (req, res) => {
   try {
-    const test = await Test.findOne({ link: req.params.id });
-    if (!test) return res.status(404).json({ message: 'Test not found' });
-
-    const isRegistered = test.registrations.includes(req.user.id);
-    res.json({ registered: isRegistered });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
+    const test = await Test.findOne({ link: req.params.link });
+    if (!test) return res.status(404).json({ message: "Test not found" });
+    const uid = req.user?.id;
+    if (!uid) return res.json({ registered: false });
+    if (String(test.createdBy) === String(uid)) return res.json({ registered: true });
+    const registered = Array.isArray(test.registrations)
+      ? test.registrations.some(id => String(id) === String(uid))
+      : false;
+    res.json({ registered });
+  } catch {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
+// POST /api/test/:link/register
+exports.registerForTest = async (req, res) => {
+  try {
+    const test = await Test.findOne({ link: req.params.link });
+    if (!test) return res.status(404).json({ message: "Test not found" });
+    const uid = req.user?.id;
+    if (!uid) return res.status(401).json({ message: "Unauthorized" });
+    if (!Array.isArray(test.registrations)) test.registrations = [];
+    if (!test.registrations.some(id => String(id) === String(uid))) {
+      test.registrations.push(uid);
+      await test.save();
+    }
+    res.json({ ok: true, registered: true });
+  } catch {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// POST /api/test/:id/submit
+exports.submitAnswers = async (req, res) => {
+  try {
+    if (!Submission) return res.json({ ok: true }); // soft fallback if model missing
+    const { id } = req.params;
+    const uid = req.user?.id;
+    if (!uid) return res.status(401).json({ message: "Unauthorized" });
+
+    await Submission.findOneAndUpdate(
+      { testId: id, userId: uid },
+      { $set: { answers: req.body.answers || {}, submittedAt: new Date() } },
+      { upsert: true }
+    );
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ message: "Server error" });
+  }
+};

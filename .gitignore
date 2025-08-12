@@ -1,11 +1,32 @@
-# Ignore node modules
-node_modules/
+# Node
+**/node_modules/
+**/dist/
+**/build/
+**/.cache/
+**/.next/
+**/.nuxt/
+**/.vite/
+**/.turbo/
+**/coverage/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Ignore environment config
-.env
-
-# Ignore system files
+# Mac/OS
 .DS_Store
 
-# Ignore logs
-*.log
+# Env & local
+.env
+.env.*
+server/.env
+
+# Uploads / generated binaries
+server/uploads/
+
+# Python junk
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Postman exports
+*.postman_collection.json

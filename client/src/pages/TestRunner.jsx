@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axios from '../api/axiosConfig';
 import OptionGrid from '../components/OptionGrid';
 import Timer from '../components/Timer';
 import PdfViewer from '../components/PdfViewer';
@@ -14,20 +14,51 @@ export default function TestRunner() {
   const [isTestStarted, setIsTestStarted] = useState(false);
   const [disableGrid, setDisableGrid] = useState(true);
   const [submitState, setSubmitState] = useState('idle'); // idle | submitting | done
+  const [regChecked, setRegChecked] = useState(false);    // finished access check
 
-  // Fetch test details by link param
+  // Fetch test details by link
   useEffect(() => {
-    axios
-      .get(`/api/test/public/${link}`)
-      .then(res => setTest(res.data.test))
-      .catch(() => navigate('/not-found'));
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await axios.get(`/test/public/${link}`);
+        if (!cancel) setTest(res.data.test);
+      } catch {
+        if (!cancel) navigate('/not-found');
+      }
+    })();
+    return () => { cancel = true; };
   }, [link, navigate]);
 
-  if (!test) return <div className="text-center mt-12">Loading…</div>;
+  // Gate access: must be creator OR registered; otherwise bounce to Bridge
+  useEffect(() => {
+    if (!test) return; // wait for test to load
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await axios.get(`/test/registered/${link}`);
+        if (cancel) return;
+        const isReg = Boolean(r.data?.registered);
+        if (!isReg && !test.isCreator) {
+          navigate(`/test/${link}`);
+          return;
+        }
+      } catch {
+        if (!test.isCreator) navigate(`/test/${link}`);
+      } finally {
+        if (!cancel) setRegChecked(true);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [link, navigate, test]);
+
+  if (!test || !regChecked) {
+    return <div className="text-center mt-12">Loading…</div>;
+  }
 
   const { pdfUrl, duration, questionCount, scheduledDate, _id: testId } = test;
 
-  // Utility: Robust path for both local and remote PDFs
+  // Robust path for both local and remote PDFs
   const getPdfPath = () => {
     if (!pdfUrl) return '';
     if (pdfUrl.startsWith('/uploads/')) return pdfUrl;
@@ -35,16 +66,16 @@ export default function TestRunner() {
     return `/uploads/${pdfUrl}`;
   };
 
-  // Robust submit logic (debounced, disables on submit, shows status)
+  // Submit logic
   const handleSubmit = async () => {
     if (!isTestStarted || disableGrid || submitState !== 'idle') return;
     setSubmitState('submitting');
     try {
-      await axios.post(`/api/test/${testId}/submit`, { answers });
+      await axios.post(`/test/${testId}/submit`, { answers });
       setSubmitState('done');
       alert('Test submitted! Your answers have been saved.');
-      // Optionally: navigate(`/results/${testId}`);
-    } catch  {
+      // navigate(`/results/${testId}`);
+    } catch {
       alert('Failed to submit, please try again.');
       setSubmitState('idle');
     }
@@ -58,21 +89,25 @@ export default function TestRunner() {
       </div>
 
       {/* Right: OMR Sheet */}
-      <div className="
-        w-2/5 p-0 flex flex-col h-full
-        bg-gradient-to-b from-blue-100/80 via-white to-blue-50
-        dark:from-slate-900 dark:via-slate-800 dark:to-slate-900
-        border-l border-blue-100 dark:border-slate-800
-        shadow-xl transition-colors duration-300
-      ">
+      <div
+        className="
+          w-2/5 p-0 flex flex-col h-full
+          bg-gradient-to-b from-blue-100/80 via-white to-blue-50
+          dark:from-slate-900 dark:via-slate-800 dark:to-slate-900
+          border-l border-blue-100 dark:border-slate-800
+          shadow-xl transition-colors duration-300
+        "
+      >
         {/* Timer */}
-        <div className="
-          sticky top-0 z-10
-          bg-blue-50/80 dark:bg-slate-900/80
-          pb-2 pt-6
-          backdrop-blur-md
-          border-b border-blue-100 dark:border-slate-800
-        ">
+        <div
+          className="
+            sticky top-0 z-10
+            bg-blue-50/80 dark:bg-slate-900/80
+            pb-2 pt-6
+            backdrop-blur-md
+            border-b border-blue-100 dark:border-slate-800
+          "
+        >
           <Timer
             scheduledDate={scheduledDate}
             duration={duration}
@@ -83,6 +118,7 @@ export default function TestRunner() {
             setDisableGrid={setDisableGrid}
           />
         </div>
+
         {/* Option grid */}
         <div className="flex-1 overflow-y-auto px-4 py-1">
           <OptionGrid
@@ -94,13 +130,16 @@ export default function TestRunner() {
             }
           />
         </div>
+
         {/* Submit button fixed at bottom */}
-        <div className="
-          sticky bottom-0 z-10 px-6 py-4
-          bg-blue-50/90 dark:bg-slate-900/90
-          border-t border-blue-100 dark:border-slate-800
-          backdrop-blur
-        ">
+        <div
+          className="
+            sticky bottom-0 z-10 px-6 py-4
+            bg-blue-50/90 dark:bg-slate-900/90
+            border-t border-blue-100 dark:border-slate-800
+            backdrop-blur
+          "
+        >
           <button
             onClick={handleSubmit}
             disabled={disableGrid || submitState !== 'idle'}

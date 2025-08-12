@@ -1,34 +1,29 @@
 // server/models/Test.js
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
+const { Schema } = mongoose;
 
-const testSchema = new mongoose.Schema({
-  title:         { type: String, required: true },
-  description:   { type: String, default: '' },
-  pdfUrl:        { type: String, required: true },
-  duration:      { type: Number, required: true },     // minutes
-  questionCount: { type: Number, required: true },     // bubbles
-  subject:       { type: String, default: '' },
-  type:          { type: String, default: '' },        // dynamic label
-  testMode:      { type: String, default: '' },        // dynamic label
+const TestSchema = new Schema(
+  {
+    title:         { type: String, required: true, trim: true },
+    description:   { type: String, default: "" },
+    subject:       { type: String, default: "" },
+    type:          { type: String, default: "" },
+    testMode:      { type: String, default: "" },
+    duration:      { type: Number, default: null },
+    questionCount: { type: Number, default: null },
+    scheduledDate: { type: Date,   default: null },
+    status:        { type: String, default: "Scheduled" },
 
+    isPublic:      { type: Boolean, default: false },
+    pdfUrl:        { type: String, default: "" },
 
-  scheduledDate: { type: Date, required: true },
-  status:        { 
-    type: String,
-    enum: ['Scheduled','Cancelled','Completed'],
-    default: 'Scheduled'
+    answerKey:     { type: Schema.Types.Mixed, default: {} },
+    link:          { type: String, required: true, unique: true, index: true },
+
+    createdBy:     { type: Schema.Types.ObjectId, ref: "User" },
+    registrations: [{ type: Schema.Types.ObjectId, ref: "User" }],
   },
-  isPublic:      { type: Boolean, default: false },
+  { timestamps: true }
+);
 
-  createdBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  registrations: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-  link:          { type: String, required: true, unique: true },
-  answerKey: {
-    type: Map,
-    of: String,
-    default: {},   // No problem for old records!
-    required: false
-  },
-}, { timestamps: true });
-
-module.exports = mongoose.model('Test', testSchema);
+module.exports = mongoose.model("Test", TestSchema);

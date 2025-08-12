@@ -1,14 +1,21 @@
 // server/routes/api.js
-const express = require('express');
-const router  = express.Router();
-const protect             = require('../middleware/authMiddleware');
-const { getRecentResults } = require('../controllers/resultController');
-const { getAnnouncements } = require('../controllers/announcementController');
+const express = require("express");
+const router = express.Router();
+const requireAuth = require("../middleware/authMiddleware");
 
-// Protected recent results
-router.get('/test/results/recent', protect, getRecentResults);
+let announcementsCtrl, resultsCtrl;
+try { announcementsCtrl = require("../controllers/announcementController"); } catch {}
+try { resultsCtrl = require("../controllers/resultController"); } catch {}
 
-// Public announcements
-router.get('/announcements', getAnnouncements);
+const listAnnouncements =
+  (announcementsCtrl && (announcementsCtrl.list || announcementsCtrl.getAnnouncements)) ||
+  ((req, res) => res.json({ announcements: [] }));
+
+const recentResults =
+  (resultsCtrl && (resultsCtrl.getRecentResults || resultsCtrl.recent)) ||
+  ((req, res) => res.json({ results: [] }));
+
+router.get("/announcements", listAnnouncements);
+router.get("/test/results/recent", requireAuth, recentResults);
 
 module.exports = router;
