@@ -15,6 +15,7 @@ const TestSchema = new mongoose.Schema(
     status: { type: String, default: "Scheduled" },
     isPublic: { type: Boolean, default: false },
     pdfUrl: { type: String, default: "" },
+    answersPdfUrl: { type: String, default: "" },
     answerKey: { type: Object, default: {} },
     link: { type: String, unique: true, index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

@@ -28,14 +28,16 @@ export default function TestsCreation() {
   const [questionPdfFile, setQuestionPdfFile] = useState(null);
   const [questionPdfUrl, setQuestionPdfUrl] = useState("");
 
-  // --- Step 2: Answer Key Extraction ---
+  // --- Step 2: Answer Key Extraction + Official Answers PDF (optional) ---
   const [answerKey, setAnswerKey] = useState({});
   const [questionCount, setQuestionCount] = useState("");
-  // (If using separate AnswerKey PDF upload, add those here)
+  const [answersPdfFile, setAnswersPdfFile] = useState(null);
+  const [answersPdfUrl, setAnswersPdfUrl] = useState("");
 
   // --- Step 3: Test Configuration ---
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [syllabus, setSyllabus] = useState("");        // 👈 NEW
   const [type, setType] = useState("");
   const [testMode, setTestMode] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
@@ -43,14 +45,11 @@ export default function TestsCreation() {
   const [isPublic, setIsPublic] = useState(false);
   const [subject, setSubject] = useState("");
 
-
   // --- UI State ---
   const [errors, setErrors] = useState({});
   const [shareLink, setShareLink] = useState("");
   const [publishing, setPublishing] = useState(false);
   const [uploading, setUploading] = useState(false);
-
-  // --- Form Validation ---
 
   // Step validation for enabling/disabling "Next" button
   const isStepValid = () => {
@@ -68,9 +67,11 @@ export default function TestsCreation() {
       if (!description) return false;
       if (!type) return false;
       if (!testMode) return false;
+      if (!subject) return false;
       if (!scheduledDate) return false;
       if (!duration || duration <= 0) return false;
       if (!questionCount || questionCount <= 0) return false;
+      // syllabus & answersPdf are optional
       return true;
     }
     return true;
@@ -88,6 +89,7 @@ export default function TestsCreation() {
         errs.answerKey = "Extract and review the answer key.";
       if (Object.keys(answerKey).length !== Number(questionCount))
         errs.answerKey = "Answer key count does not match question count.";
+      // Official Answers PDF is optional — no error here
     }
     if (step === 2) {
       if (!title) errs.title = "Test title is required.";
@@ -98,9 +100,9 @@ export default function TestsCreation() {
       if (!scheduledDate) errs.scheduledDate = "Scheduled date/time is required.";
       if (scheduledDate && new Date(scheduledDate) < new Date())
         errs.scheduledDate = "Scheduled date/time cannot be in the past.";
-
       if (!duration || duration <= 0) errs.duration = "Duration must be positive.";
       if (!questionCount || questionCount <= 0) errs.questionCount = "Question count must be positive.";
+      // syllabus is optional
     }
     setErrors(errs);
     return Object.keys(errs).length === 0;
@@ -119,12 +121,7 @@ export default function TestsCreation() {
         return newErrs;
       });
     }
-    // Also clear questionCount error if now valid
-    if (
-      errors.questionCount &&
-      questionCount &&
-      Number(questionCount) > 0
-    ) {
+    if (errors.questionCount && questionCount && Number(questionCount) > 0) {
       setErrors((prev) => {
         const newErrs = { ...prev };
         delete newErrs.questionCount;
@@ -139,7 +136,7 @@ export default function TestsCreation() {
   };
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
-  // Upload file and get URL (on publish)
+  // Upload file and get URL (shared)
   const uploadPdfAndGetUrl = async (file) => {
     if (!file) return "";
     setUploading(true);
@@ -151,10 +148,6 @@ export default function TestsCreation() {
       });
       return res.data.url;
     } catch {
-      setErrors((prev) => ({
-        ...prev,
-        pdfUrl: "Failed to upload PDF. Try again.",
-      }));
       return "";
     } finally {
       setUploading(false);
@@ -166,6 +159,7 @@ export default function TestsCreation() {
     setPublishing(true);
     setErrors({});
     try {
+      // Ensure questions PDF is uploaded
       let uploadedQuestionUrl = questionPdfUrl;
       if (questionPdfFile && !questionPdfUrl) {
         uploadedQuestionUrl = await uploadPdfAndGetUrl(questionPdfFile);
@@ -176,9 +170,18 @@ export default function TestsCreation() {
         setPublishing(false);
         return;
       }
+
+      // Upload official answers PDF if provided
+      let uploadedAnswersUrl = answersPdfUrl;
+      if (answersPdfFile && !answersPdfUrl) {
+        uploadedAnswersUrl = await uploadPdfAndGetUrl(answersPdfFile);
+        setAnswersPdfUrl(uploadedAnswersUrl);
+      }
+
       const payload = {
         title,
         description,
+        syllabus,                 // 👈 NEW
         type,
         testMode,
         scheduledDate,
@@ -187,8 +190,10 @@ export default function TestsCreation() {
         isPublic,
         pdfUrl: uploadedQuestionUrl,
         answerKey,
-        subject
+        subject,
+        answersPdfUrl: uploadedAnswersUrl || "",  // 👈 NEW
       };
+
       const res = await axios.post("/test", payload);
       setShareLink(`${window.location.origin}/tests/${res.data.test.link}/take`);
       setStep(Steps.length); // Move to share link screen
@@ -206,37 +211,32 @@ export default function TestsCreation() {
         <DocumentCheckIcon className="h-6 w-6 text-blue-600" />
         Test Preview
       </h3>
-      <div className="mb-2">
-        <span className="font-semibold">Title:</span> {title}
-      </div>
+
+      <div className="mb-2"><span className="font-semibold">Title:</span> {title}</div>
+
       <div className="mb-2">
         <span className="font-semibold">Description:</span>
-        <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-line">
-          {description}
-        </div>
+        <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{description}</div>
       </div>
+
+      {syllabus && (
+        <div className="mb-2">
+          <span className="font-semibold">Syllabus:</span>
+          <div className="mt-1 text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{syllabus}</div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-        <div>
-          <span className="font-semibold">Type:</span> {type}
-        </div>
-        <div>
-          <span className="font-semibold">Mode:</span> {testMode}
-        </div>
+        <div><span className="font-semibold">Type:</span> {type}</div>
+        <div><span className="font-semibold">Mode:</span> {testMode}</div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
-        <div>
-          <span className="font-semibold">Scheduled Date:</span> {scheduledDate}
-        </div>
-        <div>
-          <span className="font-semibold">Duration:</span> {duration} mins
-        </div>
-        <div>
-          <span className="font-semibold">Questions:</span> {questionCount}
-        </div>
+        <div><span className="font-semibold">Scheduled Date:</span> {scheduledDate}</div>
+        <div><span className="font-semibold">Duration:</span> {duration} mins</div>
+        <div><span className="font-semibold">Questions:</span> {questionCount}</div>
       </div>
-      <div className="mb-2">
-        <span className="font-semibold">Public:</span> {isPublic ? "Yes" : "No"}
-      </div>
+      <div className="mb-2"><span className="font-semibold">Public:</span> {isPublic ? "Yes" : "No"}</div>
+
       <div className="mb-2">
         <span className="font-semibold">Answer Key Sample:</span>{" "}
         {answerKey && (
@@ -249,17 +249,21 @@ export default function TestsCreation() {
           </span>
         )}
       </div>
+
       <div className="flex items-center gap-2">
         <DocumentCheckIcon className="h-5 w-5 text-green-600" />
         {questionPdfUrl && (
-          <a
-            href={questionPdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline text-blue-600"
-          >
+          <a href={questionPdfUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
             Questions PDF
           </a>
+        )}
+        {answersPdfUrl && (
+          <>
+            <span className="opacity-60">•</span>
+            <a href={answersPdfUrl} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">
+              Official Answers PDF
+            </a>
+          </>
         )}
       </div>
     </div>
@@ -267,7 +271,6 @@ export default function TestsCreation() {
 
   return (
     <>
-      
       <main className="pt-4 pb-12 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
         <div className="max-w-4xl mx-auto px-6 space-y-8">
           {/* Back to Dashboard */}
@@ -353,20 +356,17 @@ export default function TestsCreation() {
             </div>
           )}
 
-          {/* Step 2: Extract Answer Key */}
+          {/* Step 2: Extract Answer Key + Official Answers PDF (optional) */}
           {step === 1 && (
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
               <div className="mb-2">
-                <label className="block text-sm font-medium">
-                  How many questions?
-                </label>
+                <label className="block text-sm font-medium">How many questions?</label>
                 <input
                   type="number"
                   min={1}
                   value={questionCount}
-                  onChange={e => {
+                  onChange={(e) => {
                     setQuestionCount(e.target.value);
-                    // Optionally: clear answerKey if questionCount shrinks
                     if (Number(e.target.value) < Object.keys(answerKey).length) {
                       setAnswerKey({});
                     }
@@ -380,12 +380,12 @@ export default function TestsCreation() {
                   </div>
                 )}
               </div>
+
               <AnswerKeyStep
                 questionCount={questionCount}
                 onAnswerKeyReady={setAnswerKey}
                 answerKey={answerKey}
                 setAnswerKey={setAnswerKey}
-                // If you want to allow answer key PDF upload, pass those props here
               />
               {errors.answerKey && (
                 <div className="flex items-center mt-2 text-red-600 text-sm">
@@ -393,6 +393,28 @@ export default function TestsCreation() {
                   {errors.answerKey}
                 </div>
               )}
+
+              {/* Optional Official Answers PDF */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium mb-1">Official Answers PDF (optional)</label>
+                <PDFUpload
+                  label="Upload Official Answers PDF"
+                  onUpload={(file, url) => {
+                    setAnswersPdfFile(file);
+                    setAnswersPdfUrl(url);
+                  }}
+                  existingFile={answersPdfFile}
+                  existingUrl={answersPdfUrl}
+                />
+                {answersPdfUrl && (
+                  <div className="flex items-center mt-2 text-green-600 text-sm">
+                    <DocumentCheckIcon className="h-5 w-5 mr-1" />
+                    <a href={answersPdfUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                      View uploaded Official Answers
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -401,51 +423,49 @@ export default function TestsCreation() {
             <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                <label className="block text-sm font-medium">
-                  Test Title
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                />
-                {errors.title && (
-                  <div className="flex items-center mt-1 text-red-600 text-sm">
-                    <ExclamationCircleIcon className="h-4 w-4 mr-1" />
-                    {errors.title}
-                  </div>
-                )}
+                  <label className="block text-sm font-medium">Test Title</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  {errors.title && (
+                    <div className="flex items-center mt-1 text-red-600 text-sm">
+                      <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                      {errors.title}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium">Subject</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  />
+                  {errors.subject && (
+                    <div className="flex items-center mt-1 text-red-600 text-sm">
+                      <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+                      {errors.subject}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium">
-                  Subject
-                </label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                  className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                />
-                {errors.subject && (
-                  <div className="flex items-center mt-1 text-red-600 text-sm">
-                    <ExclamationCircleIcon className="h-4 w-4 mr-1" />
-                    {errors.subject}
-                  </div>
-                )}
-              </div>
-              </div>
-              
 
               <div>
-                <label className="block text-sm font-medium">
-                  Description
-                </label>
+                <label className="block text-sm font-medium">Description</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
-                  rows={3}
+                  rows={4}
+                  placeholder={`Brief overview, rules, and focus areas.
+Use line breaks and bullets:
+• Paper I focus
+• Budget/Eco Survey themes
+• PYQ emphasis`}
                 />
                 {errors.description && (
                   <div className="flex items-center mt-1 text-red-600 text-sm">
@@ -455,11 +475,24 @@ export default function TestsCreation() {
                 )}
               </div>
 
+              {/* NEW: Syllabus textarea */}
+              <div>
+                <label className="block text-sm font-medium">Syllabus (optional)</label>
+                <textarea
+                  value={syllabus}
+                  onChange={(e) => setSyllabus(e.target.value)}
+                  className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                  rows={6}
+                  placeholder={`Paste sections or bullet points:
+• Polity – Laxmikanth Ch.1–10
+• Economy – Budget & Survey highlights
+• Environment – Basics + PYQs`}
+                />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium">
-                    Type (e.g. Prelims)
-                  </label>
+                  <label className="block text-sm font-medium">Type (e.g. Prelims)</label>
                   <input
                     type="text"
                     value={type}
@@ -474,9 +507,7 @@ export default function TestsCreation() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium">
-                    Mode (e.g. FLT, HLT)
-                  </label>
+                  <label className="block text-sm font-medium">Mode (e.g. FLT, HLT)</label>
                   <input
                     type="text"
                     value={testMode}
@@ -494,14 +525,12 @@ export default function TestsCreation() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium">
-                    Scheduled Date & Time
-                  </label>
+                  <label className="block text-sm font-medium">Scheduled Date & Time</label>
                   <input
                     type="datetime-local"
                     value={scheduledDate}
-                    min={new Date().toISOString().slice(0,16)}
-                    onChange={e => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().slice(0, 16)}
+                    onChange={(e) => setScheduledDate(e.target.value)}
                     className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                   />
                   {errors.scheduledDate && (
@@ -512,9 +541,7 @@ export default function TestsCreation() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium">
-                    Duration (mins)
-                  </label>
+                  <label className="block text-sm font-medium">Duration (mins)</label>
                   <input
                     type="number"
                     value={duration}
@@ -529,13 +556,11 @@ export default function TestsCreation() {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium">
-                    # of Questions
-                  </label>
+                  <label className="block text-sm font-medium"># of Questions</label>
                   <input
                     type="number"
                     value={questionCount}
-                    onChange={e => setQuestionCount(e.target.value)}
+                    onChange={(e) => setQuestionCount(e.target.value)}
                     className="mt-1 w-full p-2 border rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                   />
                   {errors.questionCount && (
@@ -555,9 +580,7 @@ export default function TestsCreation() {
                   onChange={(e) => setIsPublic(e.target.checked)}
                   className="h-4 w-4 text-blue-600 border-gray-300 rounded"
                 />
-                <label htmlFor="public" className="ml-2 block text-sm">
-                  Make this test publicly available
-                </label>
+                <label htmlFor="public" className="ml-2 block text-sm">Make this test publicly available</label>
               </div>
             </div>
           )}
@@ -572,9 +595,7 @@ export default function TestsCreation() {
                 <LinkIcon className="h-6 w-6 text-green-600" />
                 Test Created!
               </h3>
-              <div className="mb-2 text-green-700 dark:text-green-300">
-                Share this link with your peers:
-              </div>
+              <div className="mb-2 text-green-700 dark:text-green-300">Share this link with your peers:</div>
               <div className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900 rounded">
                 <LinkIcon className="h-5 w-5 text-green-600" />
                 <span className="text-sm break-all">{shareLink}</span>

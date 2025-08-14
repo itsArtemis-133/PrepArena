@@ -1,4 +1,3 @@
-// client/src/pages/TestBridge.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import dayjs from "dayjs";
@@ -7,7 +6,6 @@ import axios from "../api/axiosConfig";
 
 dayjs.extend(relativeTime);
 
-// -------------------- MERGE + VALIDATION HELPERS --------------------
 const NUMERIC_KEYS = new Set(["duration", "questionCount"]);
 const BOOL_KEYS = new Set(["isPublic", "isCreator"]);
 const SIMPLE_KEYS = [
@@ -26,6 +24,7 @@ const SIMPLE_KEYS = [
   "isCreator",
   "syllabus",
   "registrationCount",
+  "answersPdfUrl", // 👈 NEW
 ];
 
 const isEmpty = (k, v) => {
@@ -70,35 +69,28 @@ function mergeTest(prev = {}, next = {}, debugRows = []) {
   return merged;
 }
 
-// UI fmt
 const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 const fmtMin = (v) => (Number(v) > 0 ? `${Number(v)} min` : "—");
 
-// -------------------- COMPONENT --------------------
 export default function TestBridge() {
   const { link } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
   const debugEnabled = new URLSearchParams(location.search).get("debug") === "1";
-
-  // Prefetch from Dashboard for instant paint
   const prefetch = location.state?.prefetch || null;
 
-  // State
-  const [test, setTest] = useState(prefetch); // never set to null later
+  const [test, setTest] = useState(prefetch);
   const [loading, setLoading] = useState(!prefetch);
   const [registered, setRegistered] = useState(false);
   const [regLoading, setRegLoading] = useState(true);
   const [copyOk, setCopyOk] = useState(false);
   const [now, setNow] = useState(dayjs());
 
-  // Completion extras
   const [lb, setLb] = useState({ loading: true, rows: [] });
   const [solution, setSolution] = useState({ loading: true, available: false, key: {} });
   const fetchedPostRef = useRef(false);
 
-  // Debug refs
   const serverSnapshotRef = useRef(null);
   const prefetchSnapshotRef = useRef(prefetch);
   const mergeRowsRef = useRef([]);
@@ -130,7 +122,7 @@ export default function TestBridge() {
           const merged = mergeTest(test || {}, serverTest, rows);
           mergeRowsRef.current = rows;
           setTest(merged);
-        } // else: keep prefetch
+        }
 
         setLoading(false);
 
@@ -153,7 +145,6 @@ export default function TestBridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [link]);
 
-  // Time windows (safe if some fields missing)
   const start = test?.scheduledDate && dayjs(test.scheduledDate).isValid() ? dayjs(test.scheduledDate) : null;
   const end = start ? start.add(Number(test?.duration || 0), "minute") : null;
   const isUpcoming = start ? now.isBefore(start) : false;
@@ -198,21 +189,6 @@ export default function TestBridge() {
     }
   };
 
-  const registerAndMaybeEnter = async () => {
-    try {
-      await axios.post(`/test/${link}/register`);
-      setRegistered(true);
-      setTest((t) => ({ ...t, registrationCount: Number(t?.registrationCount || 0) + 1 }));
-      // Only auto-navigate while live (never after completion)
-      if (isLive) navigate(`/tests/${test.link}/take`);
-    } catch (err) {
-      const code = err?.response?.status;
-      if (code === 401) navigate(`/login?next=/test/${link}`);
-      else alert("Registration failed. Please try again.");
-    }
-  };
-
-  // ---------- skeleton / not found ----------
   if (loading && !test) {
     return (
       <div className="min-h-[70vh]">
@@ -240,7 +216,6 @@ export default function TestBridge() {
     );
   }
 
-  // ---------- UI Components ----------
   const StatusBadge = () => {
     if (isUpcoming)
       return (
@@ -270,8 +245,20 @@ export default function TestBridge() {
     </div>
   );
 
+  const registerAndMaybeEnter = async () => {
+    try {
+      await axios.post(`/test/${link}/register`);
+      setRegistered(true);
+      setTest((t) => ({ ...t, registrationCount: Number(t?.registrationCount || 0) + 1 }));
+      if (isLive) navigate(`/tests/${test.link}/take`);
+    } catch (err) {
+      const code = err?.response?.status;
+      if (code === 401) navigate(`/login?next=/test/${link}`);
+      else alert("Registration failed. Please try again.");
+    }
+  };
+
   const ActionButton = () => {
-    // Always hold CTA while registration state is unknown (prevents flicker)
     if (regLoading) {
       return (
         <button className="w-full py-3 rounded-xl font-semibold bg-slate-200 text-slate-600 dark:bg-gray-800 dark:text-slate-300 shadow cursor-wait">
@@ -279,7 +266,6 @@ export default function TestBridge() {
         </button>
       );
     }
-
     if (!registered && isUpcoming) {
       return (
         <button
@@ -330,6 +316,7 @@ export default function TestBridge() {
     return null;
   };
 
+  // ——— UI ———
   return (
     <div className="min-h-screen">
       {/* HERO */}
@@ -360,9 +347,7 @@ export default function TestBridge() {
               </div>
             </div>
 
-            <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">
-              {fmt(test.title)}
-            </h1>
+            <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">{fmt(test.title)}</h1>
 
             {test.description && (
               <p className="text-white/90 max-w-3xl">{test.description}</p>
@@ -403,13 +388,21 @@ export default function TestBridge() {
                 <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">
                   Description & Syllabus
                 </div>
+
                 {test.description && (
-                  <p className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{test.description}</p>
+                  <div className="prose dark:prose-invert max-w-none">
+                    <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-200">
+                      {test.description}
+                    </p>
+                  </div>
                 )}
+
                 {test.syllabus && (
                   <div className="mt-4">
                     <div className="font-semibold text-slate-900 dark:text-slate-100">Syllabus</div>
-                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{test.syllabus}</p>
+                    <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+                      {test.syllabus}
+                    </p>
                   </div>
                 )}
               </div>
@@ -422,15 +415,6 @@ export default function TestBridge() {
                 <li>Timer starts as scheduled and auto-submits when time ends.</li>
                 <li>If this is a public test, anyone with the link can register.</li>
               </ul>
-            </div>
-
-            <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
-              <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Guidelines</div>
-              <ol className="list-decimal pl-5 space-y-1 text-slate-700 dark:text-slate-300 text-sm">
-                <li>Ensure a stable internet connection.</li>
-                <li>Do not refresh during the live test unless instructed.</li>
-                <li>Once submitted, answers cannot be changed.</li>
-              </ol>
             </div>
 
             {/* Completed → leaderboard + answers */}
@@ -470,19 +454,27 @@ export default function TestBridge() {
 
                 <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
                   <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Official Answers</div>
+
+                  {/* Embed Official Answers PDF first, if present */}
+                  {test.answersPdfUrl && (
+                    <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 dark:border-gray-800">
+                      <iframe
+                        title="Official Answers PDF"
+                        src={`${test.answersPdfUrl}#toolbar=1&navpanes=0`}
+                        className="w-full h-[480px]"
+                      />
+                    </div>
+                  )}
+
+                  {/* Then the answer-key grid */}
                   {solution.loading ? (
                     <div className="h-12 rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
                   ) : !solution.available ? (
-                    <div className="text-slate-600 dark:text-slate-400">Solutions not available yet.</div>
-                  ) : (
-                    <div className="grid grid-cols-5 gap-2 text-sm">
-                      {Object.keys(solution.key).map((q) => (
-                        <div key={q} className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700">
-                          <span className="font-semibold mr-2">{Number(q) + 1}.</span>
-                          <span>{String(solution.key[q]).toUpperCase()}</span>
-                        </div>
-                      ))}
+                    <div className="text-slate-600 dark:text-slate-400">
+                      Solutions not available yet.
                     </div>
+                  ) : (
+                    <AnswerKeyGrid keyObj={solution.key} />
                   )}
                 </div>
               </>
@@ -559,11 +551,10 @@ export default function TestBridge() {
           </div>
         </div>
 
-        {/* spacer */}
         <div className="h-10" />
       </div>
 
-      {/* DEBUG PANEL (open with ?debug=1) */}
+      {/* DEBUG PANEL */}
       {debugEnabled && (
         <div className="fixed bottom-0 left-0 right-0 max-h-[45vh] overflow-y-auto bg-black/90 text-green-200 text-xs font-mono p-3 z-50 border-t border-green-500/40">
           <div className="flex items-center gap-3 mb-2">
@@ -605,17 +596,9 @@ export default function TestBridge() {
                 {mergeRowsRef.current.map((r, idx) => (
                   <tr key={idx} className="align-top">
                     <td className="pr-2">{r.field}</td>
-                    <td className="pr-2">
-                      <pre className="whitespace-pre-wrap">{JSON.stringify(r.prev)}</pre>
-                    </td>
-                    <td className="pr-2">
-                      <pre className="whitespace-pre-wrap">{JSON.stringify(r.next)}</pre>
-                    </td>
-                    <td className="pr-2">
-                      <pre className="whitespace-pre-wrap">
-                        {JSON.stringify(r.chosen)}
-                      </pre>
-                    </td>
+                    <td className="pr-2"><pre className="whitespace-pre-wrap">{JSON.stringify(r.prev)}</pre></td>
+                    <td className="pr-2"><pre className="whitespace-pre-wrap">{JSON.stringify(r.next)}</pre></td>
+                    <td className="pr-2"><pre className="whitespace-pre-wrap">{JSON.stringify(r.chosen)}</pre></td>
                   </tr>
                 ))}
               </tbody>
@@ -623,6 +606,30 @@ export default function TestBridge() {
           </details>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Renders the answer key with correct numbering (0- or 1-indexed inputs). */
+function AnswerKeyGrid({ keyObj }) {
+  const keys = Object.keys(keyObj || {});
+  const zeroIndexed = keys.includes("0"); // if "0" exists, treat as zero-indexed
+
+  return (
+    <div className="grid grid-cols-5 gap-2 text-sm">
+      {keys.map((q) => {
+        const n = Number(q);
+        const display = zeroIndexed ? n + 1 : n; // only +1 when zero-indexed
+        return (
+          <div
+            key={q}
+            className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700"
+          >
+            <span className="font-semibold mr-2">{display}.</span>
+            <span>{String(keyObj[q]).toUpperCase()}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

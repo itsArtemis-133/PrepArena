@@ -12,9 +12,9 @@ const computeWindow = (d) => {
   const end   = start && n(d?.duration) ? start + n(d.duration) * 60 * 1000 : null;
   const now   = Date.now();
   return {
-    isUpcoming: !!(start && now < start),
-    isLive:     !!(start && end && now >= start && now < end),
-    isCompleted:!!(end && now >= end),
+    isUpcoming:  !!(start && now < start),
+    isLive:      !!(start && end && now >= start && now < end),
+    isCompleted: !!(end && now >= end),
   };
 };
 
@@ -47,6 +47,7 @@ const shape = (doc, userId = null) => {
     status: d?.status || "Scheduled",
     isPublic: !!d?.isPublic,
     pdfUrl: d?.pdfUrl || "",
+    answersPdfUrl: d?.answersPdfUrl || "",   // 👈 NEW: expose official answers PDF
     createdBy,
     isCreator: userId ? creatorId === String(userId) : false,
     registrationCount: Array.isArray(d?.registrations) ? d.registrations.length : 0,
@@ -62,7 +63,7 @@ exports.createTest = async (req, res, next) => {
     const {
       title, description, syllabus, subject, type, testMode,
       scheduledDate, duration, questionCount, isPublic = false,
-      pdfUrl, answerKey,
+      pdfUrl, answerKey, answersPdfUrl, // 👈 NEW
     } = req.body;
 
     const userId = req.user?.id || null;
@@ -79,6 +80,7 @@ exports.createTest = async (req, res, next) => {
       questionCount: n(questionCount),
       isPublic: !!isPublic,
       pdfUrl: pdfUrl || "",
+      answersPdfUrl: answersPdfUrl || "",   // 👈 NEW: persist official answers PDF
       answerKey: answerKey || {},
       link: uuidv4(),
       createdBy: userId,
@@ -229,9 +231,10 @@ exports.getLeaderboard = async (req, res) => {
         const answers = s.answers || {};
         let score = 0;
         for (const q in key) {
+          const a = answers[q];
           if (
-            answers[q] &&
-            String(answers[q]).toUpperCase() === String(key[q]).toUpperCase()
+            a &&
+            String(a).trim().toUpperCase() === String(key[q]).trim().toUpperCase()
           ) score++;
         }
         return {
