@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import Header from "../components/Header";
+
 import PDFUpload from "../components/PDFUpload";
 import AnswerKeyStep from "../components/AnswerKeyStep";
 import axios from "../api/axiosConfig";
@@ -267,8 +267,8 @@ export default function TestsCreation() {
 
   return (
     <>
-      <Header />
-      <main className="pt-20 pb-12 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
+      
+      <main className="pt-4 pb-12 bg-gray-50 dark:bg-gray-900 min-h-screen text-gray-900 dark:text-gray-100">
         <div className="max-w-4xl mx-auto px-6 space-y-8">
           {/* Back to Dashboard */}
           <button

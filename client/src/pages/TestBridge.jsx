@@ -24,6 +24,8 @@ const SIMPLE_KEYS = [
   "pdfUrl",
   "link",
   "isCreator",
+  "syllabus",
+  "registrationCount",
 ];
 
 const isEmpty = (k, v) => {
@@ -84,12 +86,17 @@ export default function TestBridge() {
   const prefetch = location.state?.prefetch || null;
 
   // State
-  const [test, setTest] = useState(prefetch);  // never set to null later
+  const [test, setTest] = useState(prefetch); // never set to null later
   const [loading, setLoading] = useState(!prefetch);
   const [registered, setRegistered] = useState(false);
   const [regLoading, setRegLoading] = useState(true);
   const [copyOk, setCopyOk] = useState(false);
   const [now, setNow] = useState(dayjs());
+
+  // Completion extras
+  const [lb, setLb] = useState({ loading: true, rows: [] });
+  const [solution, setSolution] = useState({ loading: true, available: false, key: {} });
+  const fetchedPostRef = useRef(false);
 
   // Debug refs
   const serverSnapshotRef = useRef(null);
@@ -140,8 +147,9 @@ export default function TestBridge() {
       }
     })();
 
-    return () => { cancelled = true; };
-    // intentionally avoiding `test` in deps to prevent re-merge loops
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [link]);
 
@@ -151,6 +159,33 @@ export default function TestBridge() {
   const isUpcoming = start ? now.isBefore(start) : false;
   const isLive = start && end ? now.isAfter(start) && now.isBefore(end) : false;
   const isOver = end ? now.isAfter(end) : false;
+
+  // Fetch leaderboard + solution once when completed
+  useEffect(() => {
+    if (!test?._id || !isOver || fetchedPostRef.current) return;
+    fetchedPostRef.current = true;
+
+    (async () => {
+      try {
+        const [L, S] = await Promise.allSettled([
+          axios.get(`/test/${test._id}/leaderboard`),
+          axios.get(`/test/${test._id}/solution`),
+        ]);
+        setLb({
+          loading: false,
+          rows: L.status === "fulfilled" ? (L.value.data?.results || []) : [],
+        });
+        setSolution({
+          loading: false,
+          available: S.status === "fulfilled" ? !!S.value.data?.available : false,
+          key: S.status === "fulfilled" ? (S.value.data?.answerKey || {}) : {},
+        });
+      } catch {
+        setLb({ loading: false, rows: [] });
+        setSolution({ loading: false, available: false, key: {} });
+      }
+    })();
+  }, [isOver, test?._id]);
 
   const copyShare = async () => {
     try {
@@ -167,7 +202,9 @@ export default function TestBridge() {
     try {
       await axios.post(`/test/${link}/register`);
       setRegistered(true);
-      if (isLive || isOver) navigate(`/tests/${test.link}/take`);
+      setTest((t) => ({ ...t, registrationCount: Number(t?.registrationCount || 0) + 1 }));
+      // Only auto-navigate while live (never after completion)
+      if (isLive) navigate(`/tests/${test.link}/take`);
     } catch (err) {
       const code = err?.response?.status;
       if (code === 401) navigate(`/login?next=/test/${link}`);
@@ -195,9 +232,9 @@ export default function TestBridge() {
   if (!test) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-10">
-        <div className="rounded-2xl border bg-white shadow-sm p-6">
+        <div className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
           <div className="text-lg font-semibold text-red-600">Test not found</div>
-          <p className="text-slate-600 mt-2">Please check the link and try again.</p>
+          <p className="text-slate-600 dark:text-slate-300 mt-2">Please check the link and try again.</p>
         </div>
       </div>
     );
@@ -227,21 +264,29 @@ export default function TestBridge() {
   };
 
   const Stat = ({ k, v }) => (
-    <div className="rounded-xl bg-slate-50 border p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{k}</div>
-      <div className="text-lg font-semibold text-slate-800">{v}</div>
+    <div className="rounded-xl bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800 p-4">
+      <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{k}</div>
+      <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">{v}</div>
     </div>
   );
 
   const ActionButton = () => {
+    // Always hold CTA while registration state is unknown (prevents flicker)
+    if (regLoading) {
+      return (
+        <button className="w-full py-3 rounded-xl font-semibold bg-slate-200 text-slate-600 dark:bg-gray-800 dark:text-slate-300 shadow cursor-wait">
+          Checking…
+        </button>
+      );
+    }
+
     if (!registered && isUpcoming) {
       return (
         <button
           onClick={registerAndMaybeEnter}
-          disabled={regLoading}
-          className="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white shadow hover:bg-blue-700 transition disabled:opacity-60"
+          className="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white shadow hover:bg-blue-700 transition"
         >
-          {regLoading ? "Checking registration…" : "Register for Test"}
+          Register for Test
         </button>
       );
     }
@@ -258,14 +303,14 @@ export default function TestBridge() {
     if (!registered && isOver) {
       return (
         <button
-          onClick={registerAndMaybeEnter}
-          className="w-full py-3 rounded-xl font-semibold bg-indigo-600 text-white shadow hover:bg-indigo-700 transition"
+          disabled
+          className="w-full py-3 rounded-xl font-semibold bg-slate-200 text-slate-600 dark:bg-gray-800 dark:text-slate-300 shadow cursor-not-allowed"
         >
-          Register to View
+          Test Completed
         </button>
       );
     }
-    if (registered && (isLive || isOver)) {
+    if (registered && isLive) {
       return (
         <button
           onClick={() => navigate(`/tests/${test.link}/take`)}
@@ -275,10 +320,10 @@ export default function TestBridge() {
         </button>
       );
     }
-    if (registered && isUpcoming) {
+    if (registered && (isUpcoming || isOver)) {
       return (
-        <div className="w-full py-3 rounded-xl bg-green-100 text-green-800 text-center font-semibold shadow">
-          Registered • Starts {start?.format("DD MMM, HH:mm")}
+        <div className="w-full py-3 rounded-xl bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-300 text-center font-semibold shadow">
+          {isUpcoming ? `Registered • Starts ${start?.format("DD MMM, HH:mm")}` : "Test Completed"}
         </div>
       );
     }
@@ -308,6 +353,10 @@ export default function TestBridge() {
               <div className="px-3 py-1 rounded-full bg-white/15 text-white/90 text-xs font-medium">
                 <span className="opacity-80">Duration:</span>{" "}
                 <span className="ml-1">{fmtMin(test.duration)}</span>
+              </div>
+              <div className="px-3 py-1 rounded-full bg-white/15 text-white/90 text-xs font-medium">
+                <span className="opacity-80">Registered:</span>{" "}
+                <span className="ml-1">{Number(test?.registrationCount || 0)}</span>
               </div>
             </div>
 
@@ -349,34 +398,106 @@ export default function TestBridge() {
               <Stat k="Created by" v={fmt(test?.createdBy?.username)} />
             </div>
 
-            <div className="mt-6 rounded-2xl border bg-white shadow-sm p-6">
-              <div className="text-lg font-semibold mb-2">About this test</div>
-              <ul className="list-disc pl-5 space-y-1 text-slate-700 text-sm">
+            {(test.description || test.syllabus) && (
+              <div className="mt-6 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
+                <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">
+                  Description & Syllabus
+                </div>
+                {test.description && (
+                  <p className="text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{test.description}</p>
+                )}
+                {test.syllabus && (
+                  <div className="mt-4">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">Syllabus</div>
+                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{test.syllabus}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
+              <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">About this test</div>
+              <ul className="list-disc pl-5 space-y-1 text-slate-700 dark:text-slate-300 text-sm">
                 <li>Link opens in a secure runner with PDF (left) and OMR grid (right).</li>
                 <li>Timer starts as scheduled and auto-submits when time ends.</li>
                 <li>If this is a public test, anyone with the link can register.</li>
               </ul>
             </div>
 
-            <div className="mt-4 rounded-2xl border bg-white shadow-sm p-6">
-              <div className="text-lg font-semibold mb-2">Guidelines</div>
-              <ol className="list-decimal pl-5 space-y-1 text-slate-700 text-sm">
+            <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
+              <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Guidelines</div>
+              <ol className="list-decimal pl-5 space-y-1 text-slate-700 dark:text-slate-300 text-sm">
                 <li>Ensure a stable internet connection.</li>
                 <li>Do not refresh during the live test unless instructed.</li>
                 <li>Once submitted, answers cannot be changed.</li>
               </ol>
             </div>
+
+            {/* Completed → leaderboard + answers */}
+            {isOver && (
+              <>
+                <div className="mt-6 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
+                  <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Leaderboard</div>
+                  {lb.loading ? (
+                    <div className="h-12 rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
+                  ) : lb.rows.length === 0 ? (
+                    <div className="text-slate-600 dark:text-slate-400">No submissions yet.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-slate-600 dark:text-slate-400">
+                            <th className="py-2 pr-4">Rank</th>
+                            <th className="py-2 pr-4">User</th>
+                            <th className="py-2 pr-4">Score</th>
+                            <th className="py-2">Submitted</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lb.rows.map((r, i) => (
+                            <tr key={r._id} className="border-t border-slate-200 dark:border-gray-800">
+                              <td className="py-2 pr-4">{i + 1}</td>
+                              <td className="py-2 pr-4">{r.user?.name || "—"}</td>
+                              <td className="py-2 pr-4">{r.score} / {r.total}</td>
+                              <td className="py-2">{dayjs(r.submittedAt).format("DD MMM, HH:mm")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
+                  <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Official Answers</div>
+                  {solution.loading ? (
+                    <div className="h-12 rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
+                  ) : !solution.available ? (
+                    <div className="text-slate-600 dark:text-slate-400">Solutions not available yet.</div>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-2 text-sm">
+                      {Object.keys(solution.key).map((q) => (
+                        <div key={q} className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700">
+                          <span className="font-semibold mr-2">{Number(q) + 1}.</span>
+                          <span>{String(solution.key[q]).toUpperCase()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Right: Sticky action card */}
           <div className="lg:col-span-4">
             <div className="lg:sticky lg:top-6">
-              <div className="rounded-2xl border bg-white shadow-lg p-5">
+              <div className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-lg p-5">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
                     {isUpcoming ? "Starts" : isLive ? "Ends" : isOver ? "Completed" : "—"}
                   </div>
-                  <div className="text-sm font-semibold text-slate-900">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                     {isUpcoming
                       ? start?.format("DD MMM, HH:mm")
                       : isLive
@@ -387,18 +508,18 @@ export default function TestBridge() {
                   </div>
                 </div>
 
-                <div className="mt-3 border-t pt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-slate-50 border p-2">
-                    <div className="text-[11px] text-slate-500">Type</div>
-                    <div className="text-sm font-semibold">{fmt(test.type)}</div>
+                <div className="mt-3 border-t border-slate-200 dark:border-gray-800 pt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 p-2">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Type</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmt(test.type)}</div>
                   </div>
-                  <div className="rounded-lg bg-slate-50 border p-2">
-                    <div className="text-[11px] text-slate-500">Mode</div>
-                    <div className="text-sm font-semibold">{fmt(test.testMode)}</div>
+                  <div className="rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 p-2">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Mode</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmt(test.testMode)}</div>
                   </div>
-                  <div className="rounded-lg bg-slate-50 border p-2">
-                    <div className="text-[11px] text-slate-500">Duration</div>
-                    <div className="text-sm font-semibold">{fmtMin(test.duration)}</div>
+                  <div className="rounded-lg bg-slate-50 dark:bg-gray-800 border border-slate-200 dark:border-gray-700 p-2">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">Duration</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fmtMin(test.duration)}</div>
                   </div>
                 </div>
 
@@ -407,23 +528,23 @@ export default function TestBridge() {
                 </div>
 
                 {registered && (
-                  <div className="mt-3 text-xs text-slate-600 text-center">
+                  <div className="mt-3 text-xs text-slate-600 dark:text-slate-400 text-center">
                     You’re registered for this test.
                   </div>
                 )}
               </div>
 
               {(test.isPublic || test.isCreator) && (
-                <div className="mt-4 rounded-2xl border bg-white shadow p-4">
-                  <div className="text-sm font-semibold mb-1">Share</div>
-                  <div className="text-xs text-slate-600 mb-2">
+                <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow p-4">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">Share</div>
+                  <div className="text-xs text-slate-600 dark:text-slate-400 mb-2">
                     Anyone with this link can view the Test page.
                   </div>
                   <div className="flex items-center gap-2">
                     <input
                       readOnly
                       value={shareURL}
-                      className="flex-1 text-xs px-3 py-2 rounded-lg border bg-slate-50"
+                      className="flex-1 text-xs px-3 py-2 rounded-lg border bg-slate-50 dark:bg-gray-800 border-slate-200 dark:border-gray-700"
                     />
                     <button
                       onClick={copyShare}

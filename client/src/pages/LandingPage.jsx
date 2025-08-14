@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import { useAuth } from "../hooks/useAuth";
 import heroImage from "../assets/hero.svg";
-import logo from "../assets/logo.png";
+import logo from "../assets/preparena-v3-icon.svg";
 
 const LandingPage = () => {
   const { token, login } = useAuth();
@@ -140,9 +140,13 @@ const LandingPage = () => {
             <div className="md:w-1/2 text-center md:text-left">
               <div className="flex items-center justify-center md:justify-start mb-6">
                 <img src={logo} alt="PrepArena" className="h-14 w-14 rounded-full object-cover shadow-lg mr-3" />
-                <span className="text-3xl font-extrabold text-blue-700 dark:text-blue-300 tracking-tight">
-                  PrepArena
-                </span>
+                <h1 className="text-3xl font-extrabold tracking-tight">
+  <span className="text-[#0F1F33] dark:text-slate-100">Prep</span>
+  <span className="bg-gradient-to-r from-[#FF6B6B] via-[#FFA24C] to-[#FFD93D] bg-clip-text text-transparent">
+    Arena
+  </span>
+</h1>
+
               </div>
               <h2 className="text-4xl md:text-5xl font-extrabold mb-4 leading-tight">
                 Practice. Compete. Conquer UPSC.
