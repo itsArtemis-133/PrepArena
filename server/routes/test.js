@@ -12,29 +12,49 @@ const axios = require("axios");
 const FormData = require("form-data");
 
 const testController = require("../controllers/testController");
+const feedbackController = require("../controllers/feedbackController");
 const requireAuth = require("../middleware/authMiddleware");
 const optionalAuth = require("../middleware/optionalAuth");
 
-// My tests (creator view)
-router.get("/test", requireAuth, testController.getMyTests);
+// Helper: return a no-op 501 handler if a controller method is missing,
+// so the app doesn't crash during development.
+const h = (fn) =>
+  typeof fn === "function"
+    ? fn
+    : (req, res) => res.status(501).json({ message: "Not implemented" });
 
-// Public list & detail
-router.get("/test/public", optionalAuth, testController.getPublicTests);
-router.get("/test/public/:link", optionalAuth, testController.getPublicTest);
+/* ---------------------- My tests (creator / registered) ---------------------- */
+router.get("/test", requireAuth, h(testController.getMyTests));
 
-// Registration
-router.get("/test/registered/:link", optionalAuth, testController.checkRegistration);
-router.post("/test/:link/register", requireAuth, testController.registerForTest);
+/* ------------------------- Public list & public view ------------------------- */
+router.get("/test/public", optionalAuth, h(testController.getPublicTests));
+router.get("/test/public/:link", optionalAuth, h(testController.getPublicTest));
 
-// Create & submit
-router.post("/test", requireAuth, testController.createTest);
-router.post("/test/:id/submit", requireAuth, testController.submitAnswers);
+/* --------------------------- Registration flows ----------------------------- */
+router.get("/test/registered/:link", optionalAuth, h(testController.checkRegistration));
+router.post("/test/:link/register", requireAuth, h(testController.registerForTest));
+router.post("/test/:link/unregister", requireAuth, h(testController.unregisterForTest)); // creator/user opt-out (if implemented)
 
-// Results (public reads; controller gates by completion window)
-router.get("/test/:id/leaderboard", optionalAuth, testController.getLeaderboard);
-router.get("/test/:id/solution", optionalAuth, testController.getSolution);
+/* ------------------------- Create / Update / Submit ------------------------- */
+router.post("/test", requireAuth, h(testController.createTest));
+router.patch("/test/:id", requireAuth, h(testController.updateTest)); // creator edit (if implemented)
+router.post("/test/:id/submit", requireAuth, h(testController.submitAnswers));
 
-// Answer-key extraction proxy (Python service on :8001)
+/* ------------------------------ Results reads ------------------------------- */
+router.get("/test/:id/leaderboard", optionalAuth, h(testController.getLeaderboard));
+router.get("/test/:id/leaderboard.csv", optionalAuth, h(testController.getLeaderboardCsv));
+router.get("/test/:id/results/me", requireAuth, h(testController.getMyResult));
+router.get("/test/:id/solution", optionalAuth, h(testController.getSolution));
+
+/* -------------------------------- Feedback ---------------------------------- */
+// GET avg/count + my feedback (optional auth)
+router.get("/test/:id/feedback", optionalAuth, h(feedbackController.getFeedback));
+// POST upsert my feedback (require auth)
+router.post("/test/:id/feedback", requireAuth, h(feedbackController.upsertFeedback));
+// DELETE clear my feedback (require auth)
+router.delete("/test/:id/feedback", requireAuth, h(feedbackController.deleteFeedback));
+
+/* --------------- Answer-key extraction proxy (local Python) ----------------- */
 router.post(
   "/test/upload-answers",
   requireAuth,

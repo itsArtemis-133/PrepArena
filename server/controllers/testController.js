@@ -12,9 +12,9 @@ const computeWindow = (d) => {
   const end   = start && n(d?.duration) ? start + n(d.duration) * 60 * 1000 : null;
   const now   = Date.now();
   return {
-    isUpcoming:  !!(start && now < start),
-    isLive:      !!(start && end && now >= start && now < end),
-    isCompleted: !!(end && now >= end),
+    isUpcoming: !!(start && now < start),
+    isLive:     !!(start && end && now >= start && now < end),
+    isCompleted:!!(end && now >= end),
   };
 };
 
@@ -47,7 +47,7 @@ const shape = (doc, userId = null) => {
     status: d?.status || "Scheduled",
     isPublic: !!d?.isPublic,
     pdfUrl: d?.pdfUrl || "",
-    answersPdfUrl: d?.answersPdfUrl || "",   // 👈 NEW: expose official answers PDF
+    answersPdfUrl: d?.answersPdfUrl || "", // NEW
     createdBy,
     isCreator: userId ? creatorId === String(userId) : false,
     registrationCount: Array.isArray(d?.registrations) ? d.registrations.length : 0,
@@ -63,7 +63,7 @@ exports.createTest = async (req, res, next) => {
     const {
       title, description, syllabus, subject, type, testMode,
       scheduledDate, duration, questionCount, isPublic = false,
-      pdfUrl, answerKey, answersPdfUrl, // 👈 NEW
+      pdfUrl, answersPdfUrl, answerKey,
     } = req.body;
 
     const userId = req.user?.id || null;
@@ -80,7 +80,7 @@ exports.createTest = async (req, res, next) => {
       questionCount: n(questionCount),
       isPublic: !!isPublic,
       pdfUrl: pdfUrl || "",
-      answersPdfUrl: answersPdfUrl || "",   // 👈 NEW: persist official answers PDF
+      answersPdfUrl: answersPdfUrl || "",
       answerKey: answerKey || {},
       link: uuidv4(),
       createdBy: userId,
@@ -90,6 +90,41 @@ exports.createTest = async (req, res, next) => {
 
     res.status(201).json({ test: shape(doc, userId) });
   } catch (err) { next(err); }
+};
+
+// PATCH /api/test/:id  (creator only, only before start)
+exports.updateTest = async (req, res) => {
+  try {
+    const uid = req.user?.id;
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    if (String(test.createdBy) !== String(uid)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const w = computeWindow(test);
+    if (!w.isUpcoming) {
+      return res.status(400).json({ message: "Cannot modify after start" });
+    }
+
+    const allowed = [
+      "title","description","syllabus","subject","type","testMode",
+      "scheduledDate","duration","questionCount","isPublic","pdfUrl","answersPdfUrl"
+    ];
+    allowed.forEach((k) => {
+      if (k in req.body) {
+        if (k === "scheduledDate") test[k] = req.body[k] ? new Date(req.body[k]) : null;
+        else if (k === "duration" || k === "questionCount") test[k] = n(req.body[k]);
+        else test[k] = req.body[k];
+      }
+    });
+
+    await test.save();
+    res.json({ test: shape(test, uid) });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
 // GET /api/test  (?status=Scheduled&scope=created|registered|all)
@@ -192,6 +227,31 @@ exports.registerForTest = async (req, res) => {
   }
 };
 
+// POST /api/test/:link/unregister  (auth; only while upcoming)
+exports.unregisterForTest = async (req, res) => {
+  try {
+    const test = await Test.findOne({ link: req.params.link });
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    const uid = req.user?.id;
+    if (!uid) return res.status(401).json({ message: "Unauthorized" });
+
+    const w = computeWindow(test);
+    if (!w.isUpcoming) {
+      return res.status(400).json({ message: "Cannot unregister after start" });
+    }
+
+    if (!Array.isArray(test.registrations)) test.registrations = [];
+    const before = test.registrations.length;
+    test.registrations = test.registrations.filter((id) => String(id) !== String(uid));
+    if (test.registrations.length !== before) await test.save();
+
+    res.json({ ok: true, registered: false, registrationCount: test.registrations.length });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
 // POST /api/test/:id/submit
 exports.submitAnswers = async (req, res) => {
   try {
@@ -199,6 +259,14 @@ exports.submitAnswers = async (req, res) => {
     const { id } = req.params;
     const uid = req.user?.id;
     if (!uid) return res.status(401).json({ message: "Unauthorized" });
+
+    const test = await Test.findById(id);
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    const w = computeWindow(test);
+    if (!w.isLive) {
+      return res.status(403).json({ message: "Submission closed" });
+    }
 
     await Submission.findOneAndUpdate(
       { testId: id, userId: uid },
@@ -211,45 +279,93 @@ exports.submitAnswers = async (req, res) => {
   }
 };
 
-// GET /api/test/:id/leaderboard
+// GET /api/test/:id/leaderboard  (pagination)
 exports.getLeaderboard = async (req, res) => {
   try {
-    if (!Submission) return res.json({ results: [] });
+    if (!Submission) return res.json({ results: [], total: 0, page: 1, limit: 25 });
 
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: "Test not found" });
 
     const key = test.answerKey || {};
-    const total = Object.keys(key).length;
+    const totalQ = Object.keys(key).length;
 
     const subs = await Submission.find({ testId: req.params.id })
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs
-      .map((s) => {
-        const answers = s.answers || {};
-        let score = 0;
-        for (const q in key) {
-          const a = answers[q];
-          if (
-            a &&
-            String(a).trim().toUpperCase() === String(key[q]).trim().toUpperCase()
-          ) score++;
-        }
-        return {
-          _id: s._id,
-          user: { _id: s.userId?._id, name: s.userId?.name || s.userId?.username || "—" },
-          score,
-          total,
-          submittedAt: s.submittedAt,
-        };
-      })
-      .sort((a, b) => b.score - a.score || new Date(a.submittedAt) - new Date(b.submittedAt));
+    const scored = subs.map((s) => {
+      const answers = s.answers || {};
+      let score = 0;
+      for (const q in key) {
+        if (
+          answers[q] &&
+          String(answers[q]).toUpperCase() === String(key[q]).toUpperCase()
+        ) score++;
+      }
+      return {
+        _id: s._id,
+        user: { _id: s.userId?._id, name: s.userId?.name || s.userId?.username || "—" },
+        score,
+        total: totalQ,
+        submittedAt: s.submittedAt,
+      };
+    }).sort((a, b) => b.score - a.score || new Date(a.submittedAt) - new Date(b.submittedAt));
 
-    res.json({ results: scored.slice(0, 50) });
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const start = (page - 1) * limit;
+    const paged = scored.slice(start, start + limit);
+
+    res.json({ results: paged, total: scored.length, page, limit });
   } catch {
-    res.json({ results: [] });
+    res.json({ results: [], total: 0, page: 1, limit: 25 });
+  }
+};
+
+// GET /api/test/:id/leaderboard.csv
+exports.getLeaderboardCsv = async (req, res) => {
+  try {
+    if (!Submission) {
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+      return res.send("rank,user,score,total,submittedAt\n");
+    }
+
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    const key = test.answerKey || {};
+    const totalQ = Object.keys(key).length;
+
+    const subs = await Submission.find({ testId: req.params.id })
+      .populate("userId", "name username")
+      .lean();
+
+    const scored = subs.map((s) => {
+      const answers = s.answers || {};
+      let score = 0;
+      for (const q in key) {
+        if (answers[q] && String(answers[q]).toUpperCase() === String(key[q]).toUpperCase()) score++;
+      }
+      return {
+        user: s.userId?.name || s.userId?.username || "—",
+        score,
+        total: totalQ,
+        submittedAt: s.submittedAt ? new Date(s.submittedAt).toISOString() : "",
+      };
+    }).sort((a, b) => b.score - a.score || new Date(a.submittedAt) - new Date(b.submittedAt));
+
+    let csv = "rank,user,score,total,submittedAt\n";
+    scored.forEach((row, idx) => {
+      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${row.score},${row.total},${row.submittedAt}\n`;
+    });
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -265,5 +381,52 @@ exports.getSolution = async (req, res) => {
     res.json({ available: true, answerKey: test.answerKey || {} });
   } catch {
     res.json({ available: false, answerKey: {} });
+  }
+};
+
+// GET /api/test/:id/results/me  (auth) — with per-question breakdown
+exports.getMyResult = async (req, res) => {
+  try {
+    if (!Submission) return res.json({ available: false });
+
+    const uid = req.user?.id;
+    if (!uid) return res.status(401).json({ message: "Unauthorized" });
+
+    const test = await Test.findById(req.params.id).lean();
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    const w = computeWindow(test);
+    if (!w.isCompleted) return res.json({ available: false });
+
+    const sub = await Submission.findOne({ testId: req.params.id, userId: uid }).lean();
+    if (!sub) return res.json({ available: false });
+
+    const key = test.answerKey || {};
+    const answers = sub.answers || {};
+    const keys = Object.keys(key).sort((a,b) => Number(a) - Number(b));
+    const zeroIndexed = keys.includes("0");
+
+    let score = 0;
+    let attempted = 0;
+    const details = keys.map((q) => {
+      const correct = String(key[q]).toUpperCase();
+      const marked = answers[q] ? String(answers[q]).toUpperCase() : null;
+      const isCorrect = !!marked && marked === correct;
+      if (marked) attempted++;
+      if (isCorrect) score++;
+      const displayQ = zeroIndexed ? Number(q) + 1 : Number(q);
+      return { q: displayQ, marked, correct, isCorrect };
+    });
+
+    res.json({
+      available: true,
+      score,
+      total: keys.length,
+      attempted,
+      submittedAt: sub.submittedAt || null,
+      details,
+    });
+  } catch (err) {
+    res.json({ available: false });
   }
 };
