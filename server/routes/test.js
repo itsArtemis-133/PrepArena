@@ -33,7 +33,7 @@ router.get("/test/public/:link", optionalAuth, h(testController.getPublicTest));
 /* --------------------------- Registration flows ----------------------------- */
 router.get("/test/registered/:link", optionalAuth, h(testController.checkRegistration));
 router.post("/test/:link/register", requireAuth, h(testController.registerForTest));
-router.post("/test/:link/unregister", requireAuth, h(testController.unregisterForTest)); // creator/user opt-out (if implemented)
+router.post("/test/:link/unregister", requireAuth, h(testController.unregisterForTest));  // creator/user opt-out (if implemented)
 
 /* ------------------------- Create / Update / Submit ------------------------- */
 router.post("/test", requireAuth, h(testController.createTest));

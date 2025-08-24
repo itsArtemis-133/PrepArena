@@ -3,86 +3,52 @@
 @tailwind utilities;
 
 /* ---------- Design tokens (used by both themes) ---------- */
+/* ---------- App tokens (LeetCode/Unstop vibe) ---------- */
+/* ---------- Brand & surfaces ---------- */
+/* Change these six numbers to rebrand. Default = modern blue. */
 :root {
-  --bg: #0b1220;        /* base page bg in dark */
-  --bg-soft: #0f172a;   /* panels backdrop in dark */
-  --ring: rgba(99,102,241,.25);
+  --brand-50:  239 246 255;  /* #EFF6FF */
+  --brand-100: 219 234 254;  /* #DBEAFE */
+  --brand-500: 59 130 246;   /* #3B82F6 */
+  --brand-600: 37 99 235;    /* #2563EB */
+  --brand-700: 29 78 216;    /* #1D4ED8 */
+
+  --app-bg: 245 247 252;         /* light neutral page */
+  --surface-card: 255 255 255;   /* white */
+  --surface-border: 229 234 242; /* subtle border */
+  --text-main: 15 31 51;         /* #0F1F33 */
 }
 
-/* ---------- Component primitives via Tailwind ---------- */
-@layer components {
-  /* App page surface */
-  .app-surface {
-    @apply min-h-screen bg-slate-50 dark:bg-[var(--bg)];
-    background-image:
-      radial-gradient(80rem 40rem at 10% -10%, rgba(99,102,241,0.06), transparent 40%),
-      radial-gradient(70rem 40rem at 110% -20%, rgba(56,189,248,0.06), transparent 40%);
-  }
-
-  /* General panel/card */
-  .panel {
-    @apply rounded-2xl border shadow-lg;
-    @apply bg-white/90 border-slate-200/80;
-    @apply dark:bg-slate-900/80 dark:border-white/10;
-    backdrop-filter: saturate(120%) blur(4px);
-  }
-
-  /* Section heading text */
-  .section-title {
-    @apply text-lg font-semibold text-slate-800 dark:text-slate-200;
-  }
-
-  /* Subtle text */
-  .muted {
-    @apply text-slate-600 dark:text-slate-400;
-  }
-
-  /* Stat card */
-  .stat {
-    @apply panel p-4;
-  }
-  .stat-k {
-    @apply text-xs uppercase tracking-wide muted;
-  }
-  .stat-v {
-    @apply mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100;
-  }
-
-  /* CTA buttons */
-  .btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition shadow; }
-  .btn-primary { @apply btn text-white bg-indigo-600 hover:bg-indigo-700; }
-  .btn-emerald { @apply btn text-white bg-emerald-600 hover:bg-emerald-700; }
-  .btn-ghost   { @apply btn bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
-  .btn-disabled { @apply btn bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 cursor-not-allowed; }
-
-  /* Hero */
-  .hero {
-    @apply relative overflow-hidden rounded-3xl text-white shadow-2xl;
-    @apply bg-gradient-to-br from-indigo-600 to-blue-600 dark:from-indigo-700 dark:to-blue-700;
-  }
-  .hero-decor {
-    @apply absolute inset-0 pointer-events-none;
-    background:
-      radial-gradient(45rem 25rem at 0% -10%, rgba(255,255,255,.11), transparent 60%),
-      radial-gradient(30rem 20rem at 110% -20%, rgba(255,255,255,.08), transparent 60%);
-  }
-
-  /* Pills */
-  .pill {
-    @apply inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold;
-  }
-  .pill-blue    { @apply bg-blue-600/90 text-white; }
-  .pill-emerald { @apply bg-emerald-600/90 text-white; }
-  .pill-gray    { @apply bg-slate-800/90 text-slate-200; }
+/* Page background + default text */
+html, body, #root { height: 100%; }
+body {
+  background-color: rgb(var(--app-bg));
+  color: rgb(var(--text-main));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Smooth scroll + clean scrollbars */
-html { scroll-behavior: smooth; }
-* { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.5) transparent; }
-*::-webkit-scrollbar { width: 10px; height: 10px; }
-*::-webkit-scrollbar-thumb {
-  background-color: rgba(148,163,184,.5);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
+/* Solid, reliable cards/sections/tables */
+.ui-card {
+  background-color: rgb(var(--surface-card));
+  border: 1px solid rgb(var(--surface-border));
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15,31,51,.04), 0 8px 24px rgba(15,31,51,.06);
 }
+.ui-card:hover {
+  box-shadow: 0 2px 8px rgba(15,31,51,.06), 0 16px 32px rgba(15,31,51,.10);
+}
+.ui-section {
+  background-color: rgb(var(--surface-card));
+  border: 1px solid rgb(var(--surface-border));
+  border-radius: 20px;
+}
+.ui-table {
+  border: 1px solid rgb(var(--surface-border));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Buttons (brand) — optional helpers if you need them */
+.btn-primary {
+  background-color: rgb(var(--

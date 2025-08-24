@@ -4,12 +4,14 @@ import { Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 
-// Pages
 import LandingPage   from "./pages/LandingPage";
 import Dashboard     from "./pages/Dashboard";
 import TestsCreation from "./pages/TestsCreation";
 import TestBridge    from "./pages/TestBridge";
 import TestRunner    from "./pages/TestRunner";
+
+import Tests         from "./pages/Tests";     // public tests directory
+import Results       from "./pages/Results";   // protected, user’s results
 
 export default function App() {
   return (
@@ -17,14 +19,16 @@ export default function App() {
       {/* Public landing */}
       <Route path="/" element={<LandingPage />} />
 
-      {/* All pages below share Layout (Header lives inside Layout) */}
+      {/* All pages below share Layout (Header inside Layout) */}
       <Route element={<Layout />}>
-        {/* Public: anyone with the link can view Bridge */}
+        {/* Public routes */}
+        <Route path="/tests" element={<Tests />} />
         <Route path="/test/:link" element={<TestBridge />} />
 
-        {/* Protected group (must be logged in) */}
+        {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/results" element={<Results />} />
           <Route path="/tests/create" element={<TestsCreation />} />
           <Route path="/tests/:link/take" element={<TestRunner />} />
         </Route>
