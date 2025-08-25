@@ -33,11 +33,11 @@ router.get("/test/public/:link", optionalAuth, h(testController.getPublicTest));
 /* --------------------------- Registration flows ----------------------------- */
 router.get("/test/registered/:link", optionalAuth, h(testController.checkRegistration));
 router.post("/test/:link/register", requireAuth, h(testController.registerForTest));
-router.post("/test/:link/unregister", requireAuth, h(testController.unregisterForTest)); // creator/user opt-out (if implemented)
+router.post("/test/:link/unregister", requireAuth, h(testController.unregisterForTest)); // creator/user opt-out
 
 /* ------------------------- Create / Update / Submit ------------------------- */
 router.post("/test", requireAuth, h(testController.createTest));
-router.patch("/test/:id", requireAuth, h(testController.updateTest)); // creator edit (if implemented)
+router.patch("/test/:id", requireAuth, h(testController.updateTest)); // creator edit
 router.post("/test/:id/submit", requireAuth, h(testController.submitAnswers));
 
 /* ------------------------------ Results reads ------------------------------- */
@@ -48,7 +48,7 @@ router.get("/test/:id/solution", optionalAuth, h(testController.getSolution));
 
 /* -------------------------------- Feedback ---------------------------------- */
 // GET avg/count + my feedback (optional auth)
-router.get("/test/:id/feedback", optionalAuth, h(feedbackController.getFeedback));
+router.get("/test/:id/feedback", optionalAuth, h(feedbackController.listFeedbackForTest));
 // POST upsert my feedback (require auth)
 router.post("/test/:id/feedback", requireAuth, h(feedbackController.upsertFeedback));
 // DELETE clear my feedback (require auth)

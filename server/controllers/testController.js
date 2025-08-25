@@ -1,8 +1,13 @@
 // server/controllers/testController.js
 const { v4: uuidv4 } = require("uuid");
 const Test = require("../models/Test");
+const User = require("../models/User"); // keep
+
 let Submission;
 try { Submission = require("../models/Submission"); } catch {}
+
+/** ---------------- constants ---------------- */
+const CREATOR_PROJECTION = "username name creatorRatingAvg creatorRatingCount";
 
 /** ---------------- helpers ---------------- */
 const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
@@ -22,10 +27,18 @@ const shape = (doc, userId = null) => {
   const d = doc?.toObject ? doc.toObject() : doc;
   const w = computeWindow(d);
 
+  // include creator reputation if populated
   const createdBy =
     d?.createdBy && typeof d.createdBy === "object"
-      ? { _id: String(d.createdBy._id || d.createdBy), username: d.createdBy.username || d.createdBy.name || "" }
-      : d?.createdBy ? { _id: String(d.createdBy), username: "" } : null;
+      ? {
+          _id: String(d.createdBy._id || d.createdBy),
+          username: d.createdBy.username || d.createdBy.name || "",
+          creatorRatingAvg: d.createdBy.creatorRatingAvg || 0,
+          creatorRatingCount: d.createdBy.creatorRatingCount || 0,
+        }
+      : d?.createdBy
+      ? { _id: String(d.createdBy), username: "", creatorRatingAvg: 0, creatorRatingCount: 0 }
+      : null;
 
   const creatorId =
     d?.createdBy && typeof d.createdBy === "object"
@@ -147,7 +160,7 @@ exports.getMyTests = async (req, res, next) => {
 
     const docs = await Test.find(q)
       .sort({ scheduledDate: 1, createdAt: -1 })
-      .populate("createdBy", "username name");
+      .populate("createdBy", CREATOR_PROJECTION);
 
     res.json({ tests: docs.map((d) => shape(d, uid)) });
   } catch (err) { next(err); }
@@ -166,7 +179,7 @@ exports.getPublicTests = async (req, res) => {
       ],
     })
       .sort({ scheduledDate: 1, createdAt: -1 })
-      .populate("createdBy", "username name");
+      .populate("createdBy", CREATOR_PROJECTION);
 
     res.json({ tests: docs.map((d) => shape(d, req.user?.id)) });
   } catch (err) {
@@ -178,7 +191,7 @@ exports.getPublicTests = async (req, res) => {
 // GET /api/test/public/:link
 exports.getPublicTest = async (req, res, next) => {
   try {
-    const doc = await Test.findOne({ link: req.params.link }).populate("createdBy", "username name");
+    const doc = await Test.findOne({ link: req.params.link }).populate("createdBy", CREATOR_PROJECTION);
     if (!doc) return res.status(404).json({ message: "Test not found" });
     res.json({ test: shape(doc, req.user?.id) });
   } catch (err) { next(err); }
