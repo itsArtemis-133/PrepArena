@@ -1,15 +1,24 @@
+// client/src/pages/Dashboard.jsx
+// Slim, dark-mode friendly dashboard that links into TestsHub and creation.
+// Uses the same computeWindow and keeps your endpoints intact.
+
 import React from "react";
 import dayjs from "dayjs";
-import axios from "../api/axiosConfig";
+import api from "../api/axiosConfig";
 import TestCard from "../components/TestCard";
 import { useNavigate } from "react-router-dom";
 
 const computeWindow = (t) => {
-  const start = t?.scheduledDate && dayjs(t.scheduledDate).isValid() ? dayjs(t.scheduledDate) : null;
+  const start =
+    t?.scheduledDate && dayjs(t.scheduledDate).isValid()
+      ? dayjs(t.scheduledDate)
+      : null;
   const end = start ? start.add(Number(t?.duration || 0), "minute") : null;
   const now = dayjs();
   return {
-    start, end, now,
+    start,
+    end,
+    now,
     isUpcoming: !!(start && now.isBefore(start)),
     isLive: !!(start && end && now.isAfter(start) && now.isBefore(end)),
     isCompleted: !!(end && now.isAfter(end)),
@@ -28,27 +37,33 @@ export default function Dashboard() {
       try {
         setLoading(true);
         const [reg, all] = await Promise.allSettled([
-          axios.get("/test", { params: { scope: "registered" } }),
-          axios.get("/test", { params: { scope: "all" } }),
+          api.get("/test", { params: { scope: "registered" } }),
+          api.get("/test", { params: { scope: "all" } }),
         ]);
         if (cancel) return;
 
-        if (reg.status === "fulfilled") setRegistered(reg.value?.data?.tests || []);
-        if (all.status === "fulfilled") setAllMine(all.value?.data?.tests || []);
+        if (reg.status === "fulfilled")
+          setRegistered(reg.value?.data?.tests || []);
+        if (all.status === "fulfilled")
+          setAllMine(all.value?.data?.tests || []);
       } finally {
         if (!cancel) setLoading(false);
       }
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, []);
 
   // Essentials: next 4 tests the user cares about (registered upcoming/live, then created upcoming/live)
   const essentials = React.useMemo(() => {
-    const withFlags = (arr) => arr.map(t => ({ t, w: computeWindow(t) }));
+    const withFlags = (arr) => arr.map((t) => ({ t, w: computeWindow(t) }));
     const reg = withFlags(registered);
-    const mine = withFlags(allMine.filter(x => String(x?.isCreator) === "true" || x?.isCreator)); // created by me
+    const mine = withFlags(
+      allMine.filter((x) => String(x?.isCreator) === "true" || x?.isCreator)
+    ); // created by me
     const pool = [...reg, ...mine]
-      .filter(x => x.w.isUpcoming || x.w.isLive)
+      .filter((x) => x.w.isUpcoming || x.w.isLive)
       .sort((a, b) => {
         // earliest start first; live before upcoming
         const aLive = a.w.isLive ? 0 : 1;
@@ -58,12 +73,15 @@ export default function Dashboard() {
         const bt = b.w.start ? b.w.start.valueOf() : Infinity;
         return at - bt;
       })
-      .map(x => x.t);
+      .map((x) => x.t);
     // unique by link
     const seen = new Set();
     const uniq = [];
     for (const t of pool) {
-      if (!seen.has(t.link)) { seen.add(t.link); uniq.push(t); }
+      if (!seen.has(t.link)) {
+        seen.add(t.link);
+        uniq.push(t);
+      }
       if (uniq.length >= 4) break;
     }
     return uniq;
@@ -71,7 +89,7 @@ export default function Dashboard() {
 
   // Latest Results: completed tests from scope=all (limit 3)
   const latestResults = React.useMemo(() => {
-    const completed = (allMine || []).filter(t => computeWindow(t).isCompleted);
+    const completed = (allMine || []).filter((t) => computeWindow(t).isCompleted);
     return completed
       .sort((a, b) => {
         const ae = computeWindow(a).end?.valueOf() || 0;
@@ -98,7 +116,7 @@ export default function Dashboard() {
               Explore Tests
             </button>
             <button
-              onClick={() => navigate("/create-test")}
+              onClick={() => navigate("/tests/create")}
               className="px-4 py-2 rounded-xl border border-white/40 bg-white/10 hover:bg-white/20"
             >
               Create Test
@@ -111,14 +129,20 @@ export default function Dashboard() {
       <div className="mt-6">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Your next tests</h2>
-          <button onClick={() => navigate("/tests?tab=registered")} className="text-sm text-blue-600 hover:underline">
+          <button
+            onClick={() => navigate("/tests?tab=registered")}
+            className="text-sm text-blue-600 hover:underline"
+          >
             View all →
           </button>
         </div>
         {loading ? (
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-44 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
+              <div
+                key={i}
+                className="h-44 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse"
+              />
             ))}
           </div>
         ) : essentials.length === 0 ? (
@@ -128,7 +152,7 @@ export default function Dashboard() {
         ) : (
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {essentials.map((t) => (
-              <TestCard key={t.link} test={t} registered />
+              <TestCard key={t.link || t._id} test={t} registered />
             ))}
           </div>
         )}
@@ -138,14 +162,20 @@ export default function Dashboard() {
       <div className="mt-8">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Latest results</h2>
-          <button onClick={() => navigate("/tests?tab=past")} className="text-sm text-blue-600 hover:underline">
+          <button
+            onClick={() => navigate("/tests?tab=past")}
+            className="text-sm text-blue-600 hover:underline"
+          >
             View all →
           </button>
         </div>
         {loading ? (
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-32 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
+              <div
+                key={i}
+                className="h-32 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse"
+              />
             ))}
           </div>
         ) : latestResults.length === 0 ? (
@@ -155,10 +185,15 @@ export default function Dashboard() {
         ) : (
           <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
             {latestResults.map((t) => (
-              <div key={t.link} className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5">
+              <div
+                key={t.link}
+                className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5"
+              >
                 <div className="text-sm text-slate-500">Completed</div>
                 <button
-                  onClick={() => navigate(`/test/${t.link}`, { state: { prefetch: t } })}
+                  onClick={() =>
+                    navigate(`/test/${t.link}`, { state: { prefetch: t } })
+                  }
                   className="mt-1 text-left font-semibold hover:underline"
                 >
                   {t.title || "Untitled Test"}
@@ -184,17 +219,12 @@ export default function Dashboard() {
               Update your details and track activity.
             </div>
           </div>
-          <button
-            onClick={() => navigate("/profile")}
-            className="px-3 py-2 rounded-xl border text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-          >
-            Open profile
-          </button>
         </div>
       </div>
     </div>
   );
 }
+
 
 // import React, { useEffect, useState } from 'react';
 // import { Link } from 'react-router-dom';

@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 import ThemeToggle from "./ThemeToggle";
 import logo from "../assets/preparena-v3-icon.svg";
 import avatar from "../assets/avatar.svg";
-import { BellIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { BellIcon, ChevronDownIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 
 export default function Header() {
   const { token, logout } = useAuth();
@@ -16,12 +16,16 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const userMenuRef = useRef(null);
 
-  const navItems = [
-    { to: "/", label: "Home" },
-    { to: "/tests", label: "Tests" },
-    { to: "/community", label: "Community" },
-    { to: "/resources", label: "Resources" },
+  // Desktop nav: show Dashboard only when logged in
+  const baseNav = [
+    { to: "/", label: "Home", private: false },
+    { to: "/tests", label: "Tests", private: false },
+    { to: "/community", label: "Community", private: false },
+    { to: "/resources", label: "Resources", private: false },
   ];
+  const authedNav = token
+    ? [{ to: "/dashboard", label: "Dashboard", private: true }, ...baseNav]
+    : baseNav;
 
   // Close menus on route change
   useEffect(() => {
@@ -44,6 +48,23 @@ export default function Header() {
     navigate("/");
   };
 
+  const NavItem = ({ to, label }) => (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        [
+          "px-3 py-2 rounded-lg font-semibold transition-colors",
+          "text-gray-700 dark:text-gray-300",
+          "hover:bg-blue-100 dark:hover:bg-gray-700",
+          "hover:text-blue-700 dark:hover:text-blue-300",
+          isActive ? "bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-300" : "",
+        ].join(" ")
+      }
+    >
+      {label}
+    </NavLink>
+  );
+
   return (
     <header className="sticky top-0 inset-x-0 z-50 bg-gradient-to-r from-blue-50 via-white to-blue-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 shadow-lg border-b border-blue-100 dark:border-gray-700 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -54,38 +75,40 @@ export default function Header() {
               <img src={logo} alt="PrepArena" className="h-10 w-10 rounded-full object-cover" />
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight">
-  <span className="text-[#0F1F33] dark:text-slate-100">Prep</span>
-  <span className="bg-gradient-to-r from-[#FF6B6B] via-[#FFA24C] to-[#FFD93D] bg-clip-text text-transparent">
-    Arena
-  </span>
-</h1>
-
+              <span className="text-[#0F1F33] dark:text-slate-100">Prep</span>
+              <span className="bg-gradient-to-r from-[#FF6B6B] via-[#FFA24C] to-[#FFD93D] bg-clip-text text-transparent">
+                Arena
+              </span>
+            </h1>
           </Link>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-2">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `px-3 py-2 rounded-lg font-semibold transition-colors
-                   text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-gray-700
-                   hover:text-blue-700 dark:hover:text-blue-300
-                   ${isActive ? "bg-blue-100 dark:bg-gray-700 text-blue-700 dark:text-blue-300" : ""}`
-                }
-              >
-                {item.label}
-              </NavLink>
+            {authedNav.map((item) => (
+              <NavItem key={item.to} to={item.to} label={item.label} />
             ))}
           </nav>
 
           {/* Right actions */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Quick Create (visible only when logged in) */}
+            {token && (
+              <button
+                onClick={() => navigate("/tests/create")}
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold bg-blue-600 text-white hover:bg-blue-700 transition shadow"
+                title="Create Test"
+              >
+                <PencilSquareIcon className="h-5 w-5" />
+                <span>Create</span>
+              </button>
+            )}
+
             <ThemeToggle />
+
             <button
               aria-label="Notifications"
               className="p-2 rounded-full bg-blue-50 dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-gray-700 shadow transition"
+              title="Notifications"
             >
               <BellIcon className="h-6 w-6 text-blue-700 dark:text-blue-300" />
             </button>
@@ -158,7 +181,7 @@ export default function Header() {
         {/* Mobile nav */}
         {mobileOpen && (
           <nav className="md:hidden pb-4 space-y-2">
-            {navItems.map((item) => (
+            {authedNav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -168,6 +191,16 @@ export default function Header() {
                 {item.label}
               </NavLink>
             ))}
+            {token && (
+              <button
+                onClick={() => { setMobileOpen(false); navigate("/tests/create"); }}
+                className="w-full mt-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl font-semibold bg-blue-600 text-white hover:bg-blue-700 transition shadow"
+                title="Create Test"
+              >
+                <PencilSquareIcon className="h-5 w-5" />
+                <span>Create</span>
+              </button>
+            )}
           </nav>
         )}
       </div>
