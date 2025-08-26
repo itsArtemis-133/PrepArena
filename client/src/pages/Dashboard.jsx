@@ -1,13 +1,19 @@
 // client/src/pages/Dashboard.jsx
-// Slim, dark-mode friendly dashboard that links into TestsHub and creation.
-// Uses the same computeWindow and keeps your endpoints intact.
-
 import React from "react";
 import dayjs from "dayjs";
 import api from "../api/axiosConfig";
 import TestCard from "../components/TestCard";
 import { useNavigate } from "react-router-dom";
+import {
+  DocumentChartBarIcon,
+  UserCircleIcon,
+  PlusCircleIcon,
+  MagnifyingGlassIcon,
+  InboxIcon,
+} from "@heroicons/react/24/outline";
+import avatar from "../assets/avatar.svg"; // Assuming you have a default avatar
 
+// The computeWindow function remains unchanged.
 const computeWindow = (t) => {
   const start =
     t?.scheduledDate && dayjs(t.scheduledDate).isValid()
@@ -25,12 +31,43 @@ const computeWindow = (t) => {
   };
 };
 
+// A new component for visually appealing section headers.
+const SectionHeader = ({ title, icon, onAction, actionLabel }) => (
+  <div className="flex items-center justify-between mb-4">
+    <div className="flex items-center gap-3">
+      {icon}
+      <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">
+        {title}
+      </h2>
+    </div>
+    {onAction && (
+      <button
+        onClick={onAction}
+        className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+      >
+        {actionLabel} →
+      </button>
+    )}
+  </div>
+);
+
+// A new component for better empty state messages.
+const EmptyState = ({ message, icon }) => (
+  <div className="mt-3 text-center rounded-2xl border-2 border-dashed bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 p-8">
+    {icon}
+    <p className="mt-3 font-medium text-gray-500 dark:text-gray-400">
+      {message}
+    </p>
+  </div>
+);
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(true);
   const [registered, setRegistered] = React.useState([]);
   const [allMine, setAllMine] = React.useState([]);
 
+  // Data fetching and memoized computations remain unchanged.
   React.useEffect(() => {
     let cancel = false;
     (async () => {
@@ -55,17 +92,15 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Essentials: next 4 tests the user cares about (registered upcoming/live, then created upcoming/live)
   const essentials = React.useMemo(() => {
     const withFlags = (arr) => arr.map((t) => ({ t, w: computeWindow(t) }));
     const reg = withFlags(registered);
     const mine = withFlags(
       allMine.filter((x) => String(x?.isCreator) === "true" || x?.isCreator)
-    ); // created by me
+    );
     const pool = [...reg, ...mine]
       .filter((x) => x.w.isUpcoming || x.w.isLive)
       .sort((a, b) => {
-        // earliest start first; live before upcoming
         const aLive = a.w.isLive ? 0 : 1;
         const bLive = b.w.isLive ? 0 : 1;
         if (aLive !== bLive) return aLive - bLive;
@@ -74,7 +109,6 @@ export default function Dashboard() {
         return at - bt;
       })
       .map((x) => x.t);
-    // unique by link
     const seen = new Set();
     const uniq = [];
     for (const t of pool) {
@@ -87,9 +121,10 @@ export default function Dashboard() {
     return uniq;
   }, [registered, allMine]);
 
-  // Latest Results: completed tests from scope=all (limit 3)
   const latestResults = React.useMemo(() => {
-    const completed = (allMine || []).filter((t) => computeWindow(t).isCompleted);
+    const completed = (allMine || []).filter(
+      (t) => computeWindow(t).isCompleted
+    );
     return completed
       .sort((a, b) => {
         const ae = computeWindow(a).end?.valueOf() || 0;
@@ -100,126 +135,140 @@ export default function Dashboard() {
   }, [allMine]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Hero / Welcome */}
-      <div className="rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 text-white p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold">Welcome back 👋</h1>
-            <p className="text-white/90">Here are your next tests and recent results.</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("/tests")}
-              className="px-4 py-2 rounded-xl bg-white text-slate-900 font-semibold hover:bg-slate-100"
-            >
-              Explore Tests
-            </button>
-            <button
-              onClick={() => navigate("/tests/create")}
-              className="px-4 py-2 rounded-xl border border-white/40 bg-white/10 hover:bg-white/20"
-            >
-              Create Test
-            </button>
-          </div>
-        </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Hero / Welcome Banner */}
+      <div className="rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-8 mb-8 shadow-lg shadow-indigo-500/20">
+        <h1 className="text-3xl font-extrabold">Welcome back, Aspirant 👋</h1>
+        <p className="mt-1 text-white/80 max-w-2xl">
+          This is your mission control. Stay updated on your upcoming tests and
+          track your performance.
+        </p>
       </div>
 
-      {/* Essentials grid */}
-      <div className="mt-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Your next tests</h2>
-          <button
-            onClick={() => navigate("/tests?tab=registered")}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            View all →
-          </button>
-        </div>
-        {loading ? (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-44 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse"
-              />
-            ))}
-          </div>
-        ) : essentials.length === 0 ? (
-          <div className="mt-3 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6 text-slate-600 dark:text-slate-400">
-            No upcoming registrations. Explore open tests to get started.
-          </div>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {essentials.map((t) => (
-              <TestCard key={t.link || t._id} test={t} registered />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Latest results */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Latest results</h2>
-          <button
-            onClick={() => navigate("/tests?tab=past")}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            View all →
-          </button>
-        </div>
-        {loading ? (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-32 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse"
-              />
-            ))}
-          </div>
-        ) : latestResults.length === 0 ? (
-          <div className="mt-3 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6 text-slate-600 dark:text-slate-400">
-            No completed tests yet.
-          </div>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-            {latestResults.map((t) => (
-              <div
-                key={t.link}
-                className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5"
-              >
-                <div className="text-sm text-slate-500">Completed</div>
-                <button
-                  onClick={() =>
-                    navigate(`/test/${t.link}`, { state: { prefetch: t } })
-                  }
-                  className="mt-1 text-left font-semibold hover:underline"
-                >
-                  {t.title || "Untitled Test"}
-                </button>
-                <div className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                  {(() => {
-                    const w = computeWindow(t);
-                    return w.end ? `Ended ${w.end.format("DD MMM, HH:mm")}` : "—";
-                  })()}
-                </div>
+      {/* Main dashboard layout: 2 columns on large screens */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left (main) column */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* Essentials grid */}
+          <section>
+            <SectionHeader
+              title="Your Next Tests"
+              icon={<DocumentChartBarIcon className="h-6 w-6 text-indigo-500" />}
+              onAction={() => navigate("/tests?tab=registered")}
+              actionLabel="View all"
+            />
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="h-64 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            ) : essentials.length === 0 ? (
+              <EmptyState
+                message="No upcoming tests found. Register for a test to get started!"
+                icon={<InboxIcon className="h-12 w-12 mx-auto text-gray-400" />}
+              />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {essentials.map((t) => (
+                  <TestCard key={t.link || t._id} test={t} registered />
+                ))}
+              </div>
+            )}
+          </section>
 
-      {/* Profile quick section (lightweight) */}
-      <div className="mt-8 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-lg font-semibold">Profile</div>
-            <div className="text-slate-600 dark:text-slate-400 text-sm">
-              Update your details and track activity.
-            </div>
-          </div>
+          {/* Latest results */}
+          <section>
+            <SectionHeader
+              title="Latest Results"
+              icon={<DocumentChartBarIcon className="h-6 w-6 text-indigo-500" />}
+              onAction={() => navigate("/tests?tab=past")}
+              actionLabel="View all"
+            />
+            {loading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-40 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
+              </div>
+            ) : latestResults.length === 0 ? (
+              <EmptyState
+                message="Your completed test results will appear here."
+                icon={<InboxIcon className="h-12 w-12 mx-auto text-gray-400" />}
+              />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {latestResults.map((t) => (
+                  <div key={t.link} className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5 flex flex-col justify-between hover:shadow-lg transition-shadow duration-300">
+                    <div>
+                      <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+                        Completed
+                      </p>
+                      <button
+                        onClick={() => navigate(`/test/${t.link}`, { state: { prefetch: t } })}
+                        className="mt-1 text-left font-bold text-gray-800 dark:text-gray-200 hover:underline line-clamp-2"
+                      >
+                        {t.title || "Untitled Test"}
+                      </button>
+                    </div>
+                    <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                      Ended on{" "}
+                      {computeWindow(t).end?.format("DD MMM, YYYY") || "N/A"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
+
+        {/* Right (sidebar) column */}
+        <aside className="lg:col-span-1 space-y-8">
+          {/* Profile quick section */}
+          <section className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6">
+            <div className="flex items-center gap-4">
+              <img src={avatar} alt="User Avatar" className="h-16 w-16 rounded-full object-cover bg-gray-200" />
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                  Your Profile
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Track your progress and manage settings.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate("/profile")}
+              className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 font-semibold text-sm transition-colors duration-300"
+            >
+              <UserCircleIcon className="h-5 w-5" />
+              <span>Go to Profile</span>
+            </button>
+          </section>
+
+          {/* Quick Actions */}
+          <section className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-4">
+              Quick Actions
+            </h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => navigate("/tests/create")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-400 text-white font-semibold shadow-lg shadow-orange-500/20 hover:scale-105 transition-all duration-300"
+              >
+                <PlusCircleIcon className="h-6 w-6" />
+                <span>Create a New Test</span>
+              </button>
+              <button
+                onClick={() => navigate("/tests")}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all duration-300"
+              >
+                <MagnifyingGlassIcon className="h-6 w-6" />
+                <span>Explore All Tests</span>
+              </button>
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   );

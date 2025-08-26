@@ -1,7 +1,7 @@
-// client/src/components/PDFUpload.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "../api/axiosConfig";
-import { DocumentCheckIcon, ExclamationCircleIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import { useDropzone } from "react-dropzone";
+import { DocumentCheckIcon, ExclamationCircleIcon, ArrowPathIcon, CloudArrowUpIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 export default function PDFUpload({
   label,
@@ -15,25 +15,34 @@ export default function PDFUpload({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
-  // Sync with parent-provided state (on step navigation)
   useEffect(() => {
     setFile(existingFile);
     setUploadedUrl(existingUrl);
   }, [existingFile, existingUrl]);
 
-  const handleFileChange = (e) => {
-    setFile(e.target.files[0]);
-    setProgress(0);
-    setUploadedUrl("");
-    setError("");
-  };
+  const onDrop = useCallback((acceptedFiles) => {
+    if (acceptedFiles.length > 0) {
+      const selectedFile = acceptedFiles[0];
+      setFile(selectedFile);
+      setProgress(0);
+      setUploadedUrl("");
+      setError("");
+      uploadFile(selectedFile);
+    }
+  }, []);
 
-  const uploadFile = async () => {
-    if (!file) return;
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'application/pdf': ['.pdf'] },
+    multiple: false,
+  });
+
+  const uploadFile = async (fileToUpload) => {
+    if (!fileToUpload) return;
     setUploading(true);
     setError("");
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", fileToUpload);
 
     try {
       const res = await axios.post("/upload", formData, {
@@ -43,7 +52,7 @@ export default function PDFUpload({
         },
       });
       setUploadedUrl(res.data.url);
-      if (onUpload) onUpload(file, res.data.url);
+      if (onUpload) onUpload(fileToUpload, res.data.url);
     } catch {
       setError("Upload failed. Please try again.");
       setProgress(0);
@@ -61,63 +70,54 @@ export default function PDFUpload({
   };
 
   return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium">{label}</label>
-      {!uploadedUrl && (
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={handleFileChange}
-          className="block w-full text-sm text-gray-500
-                     file:mr-4 file:py-2 file:px-4
-                     file:rounded-md file:border-0
-                     file:text-sm file:font-semibold
-                     file:bg-blue-50 file:text-blue-700
-                     hover:file:bg-blue-100"
-        />
-      )}
-      {file && !uploadedUrl && !uploading && (
-        <button
-          onClick={uploadFile}
-          className="mt-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Upload
-        </button>
-      )}
-      {uploading && (
-        <div className="w-full bg-gray-200 rounded-full">
-          <div
-            className="bg-blue-600 text-xs font-medium text-white text-center p-0.5 leading-none rounded-full"
-            style={{ width: `${progress}%` }}
-          >
-            {progress}%
+    <div className="space-y-3">
+      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</label>
+      
+      {uploadedUrl ? (
+        <div className="flex items-center gap-3 p-3 text-green-800 dark:text-green-300 bg-green-50 dark:bg-green-900/50 rounded-lg border border-green-200 dark:border-green-800">
+          <DocumentCheckIcon className="h-6 w-6 text-green-600 flex-shrink-0" />
+          <div className="flex-grow">
+            <a href={uploadedUrl} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline">
+              View Uploaded PDF
+            </a>
+            <p className="text-xs">{file?.name}</p>
           </div>
-        </div>
-      )}
-      {uploadedUrl && (
-        <div className="flex items-center gap-2 mt-2 text-green-700 bg-green-50 dark:bg-green-900 p-2 rounded">
-          <DocumentCheckIcon className="h-5 w-5 text-green-600" />
-          <a
-            href={uploadedUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline text-blue-700"
-          >
-            View PDF
-          </a>
           <button
             type="button"
             onClick={handleRemove}
-            className="flex items-center text-xs text-red-600 hover:underline ml-4"
+            className="flex items-center text-sm text-red-600 hover:underline"
           >
             <ArrowPathIcon className="h-4 w-4 mr-1" />
-            Replace File
+            Replace
           </button>
         </div>
+      ) : (
+        <div {...getRootProps()} className={`relative group p-6 border-2 border-dashed rounded-lg cursor-pointer text-center transition-colors duration-200 ${isDragActive ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/50' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'}`}>
+          <input {...getInputProps()} />
+          <div className="flex flex-col items-center justify-center space-y-2">
+            <CloudArrowUpIcon className="h-10 w-10 text-gray-400 group-hover:text-indigo-500" />
+            {uploading ? (
+              <p className="text-sm text-gray-600 dark:text-gray-300">Uploading...</p>
+            ) : isDragActive ? (
+              <p className="text-sm font-semibold text-indigo-600">Drop the file here...</p>
+            ) : (
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="font-semibold text-indigo-600">Click to upload</span> or drag and drop a PDF
+              </p>
+            )}
+          </div>
+        </div>
       )}
+
+      {uploading && !uploadedUrl && (
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+          <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
+        </div>
+      )}
+
       {error && (
-        <div className="flex items-center mt-1 text-red-600 text-sm">
-          <ExclamationCircleIcon className="h-4 w-4 mr-1" />
+        <div className="flex items-center mt-2 text-sm text-red-500">
+          <ExclamationCircleIcon className="h-4 w-4 mr-1.5" />
           {error}
         </div>
       )}

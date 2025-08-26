@@ -1,8 +1,10 @@
+// client/src/pages/TestsHub.jsx
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import api from "../api/axiosConfig";
 import TestCard from "../components/TestCard";
+import { ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
 const PAGE_SIZE = 12;
 const STARTING_SOON_MIN = 15;
@@ -37,21 +39,6 @@ function useQueryState() {
   return { get, setMany };
 }
 
-const TabButton = ({ active, children, onClick }) => (
-  <button
-    onClick={onClick}
-    className={
-      "px-3 py-1.5 rounded-xl text-sm border transition " +
-      (active
-        ? "bg-blue-600 text-white border-blue-600 shadow"
-        : "bg-white dark:bg-gray-900 border-slate-200 dark:border-gray-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-gray-800")
-    }
-  >
-    {children}
-  </button>
-);
-
-/* Dropdown multi-select with checkboxes (prevents tag flood) */
 function DropdownMulti({ label, options, value = [], onChange }) {
   const [open, setOpen] = React.useState(false);
   const toggle = (opt) => {
@@ -62,50 +49,28 @@ function DropdownMulti({ label, options, value = [], onChange }) {
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="px-3 py-2 rounded-xl border bg-white dark:bg-gray-800 border-slate-200 dark:border-gray-700 text-sm"
-      >
-        {selectedText}
+      <button type="button" onClick={() => setOpen((o) => !o)} className="px-4 py-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold w-full text-left flex justify-between items-center">
+        <span>{selectedText}</span>
+        <ChevronRightIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-2 w-56 rounded-xl border bg-white dark:bg-gray-900 border-slate-200 dark:border-gray-700 shadow-lg p-2">
+        <div className="absolute z-20 mt-2 w-56 rounded-xl border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 shadow-lg p-2">
           <div className="max-h-64 overflow-y-auto">
             {options.length === 0 ? (
-              <div className="px-2 py-1 text-sm text-slate-500">No options</div>
+              <div className="px-2 py-1 text-sm text-gray-500 dark:text-gray-400">No options</div>
             ) : (
               options.map((opt) => (
-                <label
-                  key={opt || "-"}
-                  className="flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-50 dark:hover:bg-gray-800 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
-                    checked={value.includes(opt)}
-                    onChange={() => toggle(opt)}
-                  />
-                  <span className="text-sm">{opt || "—"}</span>
+                <label key={opt || "-"} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded text-indigo-600 focus:ring-indigo-500" checked={value.includes(opt)} onChange={() => toggle(opt)} />
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{opt || "—"}</span>
                 </label>
               ))
             )}
           </div>
-
-          <div className="mt-2 flex items-center justify-between">
-            <button
-              className="text-sm text-slate-600 dark:text-slate-300 hover:underline"
-              onClick={() => onChange([])}
-            >
-              Clear
-            </button>
-            <button
-              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
-              onClick={() => setOpen(false)}
-            >
-              Done
-            </button>
+          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <button className="text-sm text-gray-600 dark:text-gray-300 hover:underline" onClick={() => onChange([])}>Clear</button>
+            <button className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm" onClick={() => setOpen(false)}>Done</button>
           </div>
         </div>
       )}
@@ -113,23 +78,69 @@ function DropdownMulti({ label, options, value = [], onChange }) {
   );
 }
 
+function OpenRowActions({ t, registered, startingSoon, isLive, onRegistered, onUnregistered }) {
+  const navigate = useNavigate();
+  const goBridge = () => navigate(`/test/${t.link}`, { state: { prefetch: t } });
+  const goRunner = () => navigate(`/tests/${t.link}/take`, { state: { prefetch: t } });
+  const [busy, setBusy] = React.useState(false);
+
+  const register = async () => {
+    try {
+      await api.post(`/test/${t.link}/register`);
+      onRegistered?.(t);
+      goBridge();
+    } catch (err) {
+      if (err?.response?.status === 401) navigate(`/login?next=/test/${t.link}`);
+      else alert("Registration failed. Please try again.");
+    }
+  };
+
+  const unregister = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/test/${t.link}/unregister`);
+      onUnregistered?.(t);
+    } catch {
+      alert("Could not unregister. It may be too close to start time.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showJoin = registered && (isLive || startingSoon);
+  const showRegisteredPill = registered && !showJoin;
+
+  return (
+    <div className="flex items-center justify-end gap-2">
+      {showRegisteredPill && <span className="px-2 py-1 text-[11px] font-semibold rounded-full bg-emerald-600/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-300">Registered</span>}
+      <button onClick={goBridge} className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 text-xs font-semibold hover:bg-gray-100 dark:hover:bg-gray-700">View</button>
+      {(showJoin || !registered) && <button onClick={showJoin ? (isLive ? goRunner : goBridge) : register} className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">{isLive ? "Enter" : (showJoin ? "Join" : "Register")}</button>}
+      {registered && <button disabled={busy} onClick={unregister} className="text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 hover:underline disabled:opacity-50">{busy ? "..." : "Unregister"}</button>}
+    </div>
+  );
+}
+
+const TabButton = ({ active, children, onClick }) => (
+  <button onClick={onClick} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors duration-300 ${ active ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+    {children}
+  </button>
+);
+
 export default function TestsHub() {
   const { get, setMany } = useQueryState();
   const navigate = useNavigate();
 
-  // Tabs: Open (table), Upcoming (grid), Past (grid)
   const tab = (get("tab", "open") || "open").toLowerCase();
   const page = Math.max(1, parseInt(get("page", "1"), 10) || 1);
   const q = get("q", "");
   const subjectsSel = (get("subjects", "") || "").split(",").filter(Boolean);
   const typesSel = (get("types", "") || "").split(",").filter(Boolean);
   const modesSel = (get("modes", "") || "").split(",").filter(Boolean);
-  const sort = get("sort", "dateSoon"); // dateSoon | dateLate | titleAz | titleZa
+  const sort = get("sort", "dateSoon");
 
   const [loading, setLoading] = React.useState(true);
   const [raw, setRaw] = React.useState([]);
   const [error, setError] = React.useState("");
-
   const [registeredSet, setRegisteredSet] = React.useState(() => new Set());
 
   React.useEffect(() => {
@@ -138,20 +149,14 @@ export default function TestsHub() {
       try {
         setLoading(true);
         setError("");
-
         let url = "/test/public";
         if (tab === "upcoming" || tab === "past") url = "/test?scope=all";
-
         const res = await api.get(url);
         if (cancel) return;
         const list = res?.data?.tests || [];
-
         if (tab === "upcoming" || tab === "past") {
           const withFlags = list.map((t) => ({ t, w: computeWindow(t) }));
-          const filtered =
-            tab === "upcoming"
-              ? withFlags.filter((x) => x.w.isUpcoming || x.w.isLive).map((x) => x.t)
-              : withFlags.filter((x) => x.w.isCompleted).map((x) => x.t);
+          const filtered = tab === "upcoming" ? withFlags.filter((x) => x.w.isUpcoming || x.w.isLive).map((x) => x.t) : withFlags.filter((x) => x.w.isCompleted).map((x) => x.t);
           setRaw(filtered);
         } else {
           setRaw(list);
@@ -165,7 +170,6 @@ export default function TestsHub() {
     return () => { cancel = true; };
   }, [tab]);
 
-  // Registered pool
   React.useEffect(() => {
     let cancel = false;
     (async () => {
@@ -209,30 +213,18 @@ export default function TestsHub() {
 
   const sorted = React.useMemo(() => {
     const arr = filtered.slice();
-    const getStart = (t) =>
-      t?.scheduledDate && dayjs(t.scheduledDate).isValid()
-        ? dayjs(t.scheduledDate).valueOf()
-        : Number.MAX_SAFE_INTEGER;
-
-    if (sort === "titleAz") {
-      arr.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
-    } else if (sort === "titleZa") {
-      arr.sort((a, b) => String(b.title || "").localeCompare(String(a.title || "")));
-    } else if (sort === "dateLate") {
-      arr.sort((a, b) => getStart(b) - getStart(a));
-    } else {
-      arr.sort((a, b) => getStart(a) - getStart(b)); // dateSoon default
-    }
+    const getStart = (t) => t?.scheduledDate && dayjs(t.scheduledDate).isValid() ? dayjs(t.scheduledDate).valueOf() : Number.MAX_SAFE_INTEGER;
+    if (sort === "titleAz") arr.sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+    else if (sort === "titleZa") arr.sort((a, b) => String(b.title || "").localeCompare(String(a.title || "")));
+    else if (sort === "dateLate") arr.sort((a, b) => getStart(b) - getStart(a));
+    else arr.sort((a, b) => getStart(a) - getStart(b));
     return arr;
   }, [filtered, sort]);
 
-  // Pagination
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const current = Math.min(page, totalPages);
   const startIdx = (current - 1) * PAGE_SIZE;
   const pageItems = sorted.slice(startIdx, startIdx + PAGE_SIZE);
-
-  // search debounce
   const [searchDraft, setSearchDraft] = React.useState(q);
   React.useEffect(() => setSearchDraft(q), [q]);
   React.useEffect(() => {
@@ -240,218 +232,93 @@ export default function TestsHub() {
     return () => clearTimeout(id);
   }, [searchDraft]);
 
-  // Register/unregister callbacks
   const handleRegistered = (t) => {
     const key = t.link || t._id;
-    setRegisteredSet((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-    setRaw((prev) =>
-      prev.map((x) =>
-        (x.link || x._id) === key
-          ? { ...x, registrationCount: Number(x.registrationCount || 0) + 1 }
-          : x
-      )
-    );
+    setRegisteredSet((prev) => { const next = new Set(prev); next.add(key); return next; });
+    setRaw((prev) => prev.map((x) => (x.link || x._id) === key ? { ...x, registrationCount: Number(x.registrationCount || 0) + 1 } : x));
   };
-
   const handleUnregistered = (t) => {
     const key = t.link || t._id;
-    setRegisteredSet((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-    setRaw((prev) =>
-      prev.map((x) =>
-        (x.link || x._id) === key
-          ? { ...x, registrationCount: Math.max(0, Number(x.registrationCount || 0) - 1) }
-          : x
-      )
-    );
+    setRegisteredSet((prev) => { const next = new Set(prev); next.delete(key); return next; });
+    setRaw((prev) => prev.map((x) => (x.link || x._id) === key ? { ...x, registrationCount: Math.max(0, Number(x.registrationCount || 0) - 1) } : x));
   };
 
-  const goView = (t) => navigate(`/test/${t.link}`, { state: { prefetch: t } });
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      {/* Top bar */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <h1 className="text-2xl md:text-3xl font-extrabold">Tests</h1>
-        <div className="flex items-center gap-2">
-          <TabButton active={tab === "open"} onClick={() => setMany({ tab: "open", page: 1 })}>Open</TabButton>
-          <TabButton active={tab === "upcoming"} onClick={() => setMany({ tab: "upcoming", page: 1 })}>Upcoming</TabButton>
-          <TabButton active={tab === "past"} onClick={() => setMany({ tab: "past", page: 1 })}>Past</TabButton>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <header>
+        <h1 className="text-3xl font-extrabold text-gray-900 dark:text-gray-100">Test Hub</h1>
+        <p className="mt-1 text-gray-500 dark:text-gray-400">Find, join, and review public and registered tests.</p>
+        <div className="mt-6 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl inline-flex items-center gap-1">
+          <TabButton active={tab === "open"} onClick={() => setMany({ tab: "open", page: 1 })}>Public Tests</TabButton>
+          <TabButton active={tab === "upcoming"} onClick={() => setMany({ tab: "upcoming", page: 1 })}>My Upcoming</TabButton>
+          <TabButton active={tab === "past"} onClick={() => setMany({ tab: "past", page: 1 })}>My Past Tests</TabButton>
+        </div>
+      </header>
+
+      <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+        <div className="md:col-span-3 relative">
+            <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input value={searchDraft} onChange={(e) => setSearchDraft(e.target.value)} placeholder="Search by title, subject, creator…" className="w-full pl-11 pr-4 py-3 rounded-xl border bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700 outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div className="md:col-span-1">
+          <select className="w-full px-4 py-3 rounded-xl border bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 text-sm font-semibold focus:ring-2 focus:ring-indigo-500 focus:outline-none" value={sort} onChange={(e) => setMany({ sort: e.target.value, page: 1 })}>
+            <option value="dateSoon">Sort: Date (Soonest)</option>
+            <option value="dateLate">Sort: Date (Latest)</option>
+            <option value="titleAz">Sort: Title (A-Z)</option>
+            <option value="titleZa">Sort: Title (Z-A)</option>
+          </select>
+        </div>
+        <div className="md:col-span-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <DropdownMulti label="Subject" options={pools.subjects} value={subjectsSel} onChange={(v) => setMany({ subjects: v, page: 1 })} />
+            <DropdownMulti label="Type" options={pools.types} value={typesSel} onChange={(v) => setMany({ types: v, page: 1 })} />
+            <DropdownMulti label="Mode" options={pools.modes} value={modesSel} onChange={(v) => setMany({ modes: v, page: 1 })} />
         </div>
       </div>
-
-      {/* Controls */}
-      <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-4">
-        <div className="flex flex-col xl:flex-row gap-3 xl:items-center xl:justify-between">
-          <div className="flex-1">
-            <input
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              placeholder="Search by title, subject, creator…"
-              className="w-full px-3 py-2 rounded-xl border bg-white dark:bg-gray-800 border-slate-200 dark:border-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <DropdownMulti
-              label="Subject"
-              options={pools.subjects}
-              value={subjectsSel}
-              onChange={(v) => setMany({ subjects: v, page: 1 })}
-            />
-            <DropdownMulti
-              label="Type"
-              options={pools.types}
-              value={typesSel}
-              onChange={(v) => setMany({ types: v, page: 1 })}
-            />
-            <DropdownMulti
-              label="Mode"
-              options={pools.modes}
-              value={modesSel}
-              onChange={(v) => setMany({ modes: v, page: 1 })}
-            />
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Sort</span>
-              <select
-                className="px-2 py-1.5 rounded-xl border bg-white dark:bg-gray-800 border-slate-200 dark:border-gray-700 text-sm"
-                value={sort}
-                onChange={(e) => setMany({ sort: e.target.value, page: 1 })}
-              >
-                <option value="dateSoon">Date · Soonest</option>
-                <option value="dateLate">Date · Latest</option>
-                <option value="titleAz">Title · A→Z</option>
-                <option value="titleZa">Title · Z→A</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {(subjectsSel.length || typesSel.length || modesSel.length || q) && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-slate-600 dark:text-slate-400">Filters:</span>
-            {[...subjectsSel.map((s) => ["Subject", s]), ...typesSel.map((s) => ["Type", s]), ...modesSel.map((s) => ["Mode", s])].map(([k, v]) => (
-              <span
-                key={`${k}-${v}`}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-700/70 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-600"
-              >
-                <span className="opacity-70">{k}:</span>
-                <span className="font-medium">{v}</span>
-                <button
-                  onClick={() => {
-                    if (k === "Subject") setMany({ subjects: subjectsSel.filter((x) => x !== v), page: 1 });
-                    if (k === "Type") setMany({ types: typesSel.filter((x) => x !== v), page: 1 });
-                    if (k === "Mode") setMany({ modes: modesSel.filter((x) => x !== v), page: 1 });
-                  }}
-                  className="ml-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 px-1"
-                  aria-label="Remove"
-                  title="Remove"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <button
-              onClick={() => setMany({ q: "", subjects: [], types: [], modes: [], page: 1 })}
-              className="ml-auto text-slate-600 dark:text-slate-300 hover:underline"
-            >
-              Clear all
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="mt-4">
+      
+      <div className="mt-8">
         {loading ? (
-          <div className={tab === "open" ? "space-y-2" : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4"}>
+          <div className={tab === "open" ? "space-y-3" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"}>
             {Array.from({ length: tab === "open" ? 6 : 8 }).map((_, i) =>
-              tab === "open" ? (
-                <div key={i} className="h-12 rounded-lg bg-slate-100 dark:bg-gray-800 animate-pulse" />
-              ) : (
-                <div key={i} className="h-64 rounded-2xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
-              )
+              tab === "open" ? <div key={i} className="h-16 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" /> : <div key={i} className="h-72 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
             )}
           </div>
         ) : error ? (
-          <div className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6 text-red-600 dark:text-red-400">
-            {error}
-          </div>
+          <div className="rounded-2xl border-2 border-dashed border-red-300 bg-red-50 dark:bg-red-900/20 p-8 text-center text-red-700 dark:text-red-400">{error}</div>
         ) : pageItems.length === 0 ? (
-          <div className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6 text-slate-600 dark:text-slate-400">
-            No tests found with current filters.
-          </div>
+          <div className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-gray-500 dark:text-gray-400">No tests found. Try adjusting your filters.</div>
         ) : tab === "open" ? (
-          // Re-grouped columns for OPEN; removed Status; add action-side border
           <div className="overflow-x-auto rounded-xl border bg-white dark:bg-gray-900 dark:border-gray-800">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 dark:bg-gray-800">
-                <tr className="text-left text-slate-700 dark:text-slate-300">
-                  <th className="px-4 py-3">Title / Subject</th>
-                  <th className="px-4 py-3">Type / Mode</th>
-                  <th className="px-4 py-3">Duration / Schedule</th>
-                  <th className="px-4 py-3">Creator / Rating</th>
-                  <th className="px-4 py-3 text-right border-l border-slate-200 dark:border-slate-800">Actions</th>
+              <thead className="bg-gray-50 dark:bg-gray-800/50">
+                <tr className="text-left text-gray-600 dark:text-gray-300 font-semibold">
+                  <th className="px-6 py-4">Title / Subject</th>
+                  <th className="px-6 py-4">Schedule</th>
+                  <th className="px-6 py-4">Creator</th>
+                  <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((t, i) => {
+                {pageItems.map((t) => {
                   const key = t.link || t._id;
-                  const reg = registeredSet.has(key) || !!t.isCreator || !!t.isRegistered || !!t.registered;
+                  const reg = registeredSet.has(key) || !!t.isCreator || !!t.isRegistered;
                   const { isUpcoming, isLive, minsToStart } = computeWindow(t);
                   const startingSoon = isUpcoming && minsToStart !== null && minsToStart <= STARTING_SOON_MIN;
-
                   return (
-                    <tr key={key} className={i % 2 ? "bg-white dark:bg-gray-900" : "bg-slate-50/40 dark:bg-gray-800/40"}>
-                      <td className="px-4 py-3 align-top">
-                        <button onClick={() => goView(t)} className="font-semibold hover:underline block text-left">
-                          {t.title || "Untitled Test"}
-                        </button>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">{t.subject || "—"}</div>
+                    <tr key={key} className="border-t border-gray-200 dark:border-gray-800">
+                      <td className="px-6 py-4 align-top">
+                        <button onClick={() => navigate(`/test/${t.link}`, { state: { prefetch: t } })} className="font-bold text-gray-800 dark:text-gray-100 hover:underline block text-left">{t.title || "Untitled"}</button>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t.subject || "—"}</div>
                       </td>
-
-                      <td className="px-4 py-3 align-top">
-                        <div>{t.type || "—"}</div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">{t.testMode || t.mode || "—"}</div>
+                      <td className="px-6 py-4 align-top">
+                        <div className="font-semibold text-gray-800 dark:text-gray-200">{t.scheduledDate ? dayjs(t.scheduledDate).format("DD MMM, HH:mm") : "—"}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t.duration ? `${t.duration} min` : "—"}</div>
                       </td>
-
-                      <td className="px-4 py-3 align-top">
-                        <div>{Number(t.duration) ? `${t.duration} min` : "—"}</div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                          {t.scheduledDate && dayjs(t.scheduledDate).isValid()
-                            ? dayjs(t.scheduledDate).format("DD MMM, HH:mm")
-                            : "—"}
-                        </div>
+                      <td className="px-6 py-4 align-top">
+                        <div className="font-semibold text-gray-800 dark:text-gray-200 truncate">{t?.createdBy?.username || "—"}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Rating: {Number.isFinite(t?.createdBy?.creatorRatingAvg) ? `★ ${Math.round(t.createdBy.creatorRatingAvg * 10) / 10}` : "New"}</div>
                       </td>
-
-                      <td className="px-4 py-3 align-top">
-                        <div className="truncate">{t?.createdBy?.username || "—"}</div>
-                        <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                          {Number.isFinite(t?.createdBy?.creatorRatingAvg) && Number(t?.createdBy?.creatorRatingCount) > 0
-                            ? `★ ${Math.round(t.createdBy.creatorRatingAvg * 10) / 10} · ${t.createdBy.creatorRatingCount}`
-                            : "New"}
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3 align-top text-right border-l border-slate-200 dark:border-slate-800">
-                        <OpenRowActions
-                          t={t}
-                          registered={reg}
-                          startingSoon={startingSoon}
-                          isLive={isLive}
-                          onRegistered={handleRegistered}
-                          onUnregistered={handleUnregistered}
-                        />
+                      <td className="px-6 py-4 align-top">
+                        <OpenRowActions t={t} registered={reg} startingSoon={startingSoon} isLive={isLive} onRegistered={handleRegistered} onUnregistered={handleUnregistered}/>
                       </td>
                     </tr>
                   );
@@ -460,129 +327,25 @@ export default function TestsHub() {
             </table>
           </div>
         ) : (
-          // GRID
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {pageItems.map((t) => {
               const key = t.link || t._id;
-              const registered = registeredSet.has(key) || !!t.isCreator || !!t.isRegistered || !!t.registered;
-              return (
-                <TestCard
-                  key={key}
-                  test={t}
-                  registered={registered}
-                  onRegistered={handleRegistered}
-                  onUnregistered={handleUnregistered}
-                />
-              );
+              const registered = registeredSet.has(key) || !!t.isCreator || !!t.isRegistered;
+              return <TestCard key={key} test={t} registered={registered} onRegistered={handleRegistered} onUnregistered={handleUnregistered} />;
             })}
           </div>
         )}
       </div>
 
-      {/* Pagination */}
-      <div className="mt-6 flex items-center justify-center gap-2">
-        <button
-          disabled={current <= 1}
-          onClick={() => setMany({ page: current - 1 })}
-          className={"px-3 py-1.5 rounded-xl border text-sm " + (current <= 1 ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 dark:hover:bg-gray-800")}
-        >
-          Prev
-        </button>
-        <span className="text-sm text-slate-700 dark:text-slate-300">
-          Page {current} of {totalPages}
-        </span>
-        <button
-          disabled={current >= totalPages}
-          onClick={() => setMany({ page: current + 1 })}
-          className={"px-3 py-1.5 rounded-xl border text-sm " + (current >= totalPages ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50 dark:hover:bg-gray-800")}
-        >
-          Next
-        </button>
+      <div className="mt-8 flex items-center justify-center gap-2">
+          <button disabled={current <= 1} onClick={() => setMany({ page: current - 1 })} className="p-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <ChevronLeftIcon className="h-5 w-5"/>
+          </button>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Page {current} of {totalPages}</span>
+          <button disabled={current >= totalPages} onClick={() => setMany({ page: current + 1 })} className="p-2 rounded-lg border bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300">
+            <ChevronRightIcon className="h-5 w-5"/>
+          </button>
       </div>
-    </div>
-  );
-
-  // function goView(t) {
-  //   navigate(`/test/${t.link}`, { state: { prefetch: t } });
-  // }
-}
-
-/* ------------------- Actions cell for OPEN table ------------------- */
-function OpenRowActions({ t, registered, startingSoon, isLive, onRegistered, onUnregistered }) {
-  const navigate = useNavigate();
-  const goBridge = () => navigate(`/test/${t.link}`, { state: { prefetch: t } });
-  const goRunner = () => navigate(`/tests/${t.link}/take`, { state: { prefetch: t } });
-  const [busy, setBusy] = React.useState(false);
-
-  const register = async () => {
-    try {
-      await api.post(`/test/${t.link}/register`);
-      onRegistered?.(t);
-      goBridge();
-    } catch (err) {
-      if (err?.response?.status === 401) navigate(`/login?next=/test/${t.link}`);
-      else alert("Registration failed. Please try again.");
-    }
-  };
-
-  const unregister = async () => {
-    setBusy(true);
-    try {
-      await api.post(`/test/${t.link}/unregister`);
-      onUnregistered?.(t);
-    } catch {
-      alert("Could not unregister. It may be too close to start time.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // Decisions
-  const showJoin = registered && (isLive || startingSoon);
-  const showRegisteredPill = registered && !showJoin;
-
-  return (
-    <div className="inline-flex items-center gap-2">
-      {showJoin && (
-        <button
-          onClick={isLive ? goRunner : goBridge}
-          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
-        >
-          {isLive ? "Enter" : "Join"}
-        </button>
-      )}
-
-      {!registered && (
-        <button
-          onClick={register}
-          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
-        >
-          {isLive ? "Enter" : "Register"}
-        </button>
-      )}
-
-      <button
-        onClick={goBridge}
-        className="px-3 py-1.5 rounded-lg border text-xs hover:bg-slate-50 dark:hover:bg-gray-800"
-      >
-        View
-      </button>
-
-      {showRegisteredPill && (
-        <span className="px-2 py-1 text-[11px] rounded-full bg-emerald-600/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-300">
-          Registered
-        </span>
-      )}
-
-      {registered && (
-        <button
-          disabled={busy}
-          onClick={unregister}
-          className="text-xs text-slate-600 dark:text-slate-300 hover:text-red-500 hover:underline disabled:opacity-50"
-        >
-          {busy ? "…" : "Unregister"}
-        </button>
-      )}
     </div>
   );
 }
