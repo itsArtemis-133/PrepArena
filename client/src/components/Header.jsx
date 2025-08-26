@@ -18,7 +18,7 @@ export default function Header() {
 
   // Desktop nav: show Dashboard only when logged in
   const baseNav = [
-    { to: "/", label: "Home", private: false },
+    // { to: "/", label: "Home", private: false },
     { to: "/tests", label: "Tests", private: false },
     { to: "/community", label: "Community", private: false },
     { to: "/resources", label: "Resources", private: false },

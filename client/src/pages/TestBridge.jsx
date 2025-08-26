@@ -365,9 +365,9 @@ export default function TestBridge() {
           {/* Left */}
           <div className="lg:col-span-8">
             {/* STATS GRID (aligned) */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-stretch">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-stretch">
               <StatCard label="Questions">{fmt(test.questionCount)}</StatCard>
-              <StatCard label="Duration">{fmtMin(test.duration)}</StatCard>
+              {/* <StatCard label="Duration">{fmtMin(test.duration)}</StatCard> */}
               <StatCard label="Scheduled">{start ? start.format("DD MMM YYYY, HH:mm") : "—"}</StatCard>
               <StatCard label="Created by">
                 <div className="flex items-center gap-2">
