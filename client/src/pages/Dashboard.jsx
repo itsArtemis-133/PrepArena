@@ -11,9 +11,9 @@ import {
   MagnifyingGlassIcon,
   InboxIcon,
 } from "@heroicons/react/24/outline";
-import avatar from "../assets/avatar.svg"; // Assuming you have a default avatar
+import avatar from "../assets/avatar.svg"; // Default avatar
 
-// The computeWindow function remains unchanged.
+// Time window helper (unchanged)
 const computeWindow = (t) => {
   const start =
     t?.scheduledDate && dayjs(t.scheduledDate).isValid()
@@ -31,7 +31,7 @@ const computeWindow = (t) => {
   };
 };
 
-// A new component for visually appealing section headers.
+// Section header (UI intact)
 const SectionHeader = ({ title, icon, onAction, actionLabel }) => (
   <div className="flex items-center justify-between mb-4">
     <div className="flex items-center gap-3">
@@ -51,7 +51,7 @@ const SectionHeader = ({ title, icon, onAction, actionLabel }) => (
   </div>
 );
 
-// A new component for better empty state messages.
+// Empty state (UI intact)
 const EmptyState = ({ message, icon }) => (
   <div className="mt-3 text-center rounded-2xl border-2 border-dashed bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 p-8">
     {icon}
@@ -64,10 +64,12 @@ const EmptyState = ({ message, icon }) => (
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(true);
+
+  // Two pools: tests I'm registered for, and all tests I created or registered for
   const [registered, setRegistered] = React.useState([]);
   const [allMine, setAllMine] = React.useState([]);
 
-  // Data fetching and memoized computations remain unchanged.
+  // Fetch initial data
   React.useEffect(() => {
     let cancel = false;
     (async () => {
@@ -92,13 +94,64 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Optimistic update helpers (keep shapes; match by link or _id)
+  const keyOf = (t) => t?.link || t?._id || "";
+
+  const applyToArr = (arr, test, updater) => {
+    const k = keyOf(test);
+    return arr.map((x) => (keyOf(x) === k ? updater(x) : x));
+  };
+
+  const handleRegistered = (t) => {
+    setRegistered((prev) => {
+      const exists = prev.some((x) => keyOf(x) === keyOf(t));
+      if (exists) {
+        return applyToArr(prev, t, (x) => ({
+          ...x,
+          isRegistered: true,
+          registrationCount: Number(x.registrationCount || 0) + 1,
+        }));
+      }
+      return [
+        ...prev,
+        {
+          ...t,
+          isRegistered: true,
+          registrationCount: Number(t.registrationCount || 0) + 1,
+        },
+      ];
+    });
+
+    setAllMine((prev) =>
+      applyToArr(prev, t, (x) => ({
+        ...x,
+        isRegistered: true,
+        registrationCount: Number(x.registrationCount || 0) + 1,
+      }))
+    );
+  };
+
+  const handleUnregistered = (t) => {
+    // ✅ Always remove from registered pool so the card disappears immediately
+    setRegistered((prev) => prev.filter((x) => keyOf(x) !== keyOf(t)));
+
+    // Always flip flags in allMine (created/registered superset)
+    setAllMine((prev) =>
+      applyToArr(prev, t, (x) => ({
+        ...x,
+        isRegistered: false,
+        registrationCount: Math.max(0, Number(x.registrationCount || 0) - 1),
+      }))
+    );
+  };
+
+  // Compute "Your Next Tests": only truly registered & upcoming/live
   const essentials = React.useMemo(() => {
     const withFlags = (arr) => arr.map((t) => ({ t, w: computeWindow(t) }));
     const reg = withFlags(registered);
-    const mine = withFlags(
-      allMine.filter((x) => String(x?.isCreator) === "true" || x?.isCreator)
-    );
-    const pool = [...reg, ...mine]
+
+    const pool = reg
+      .filter((x) => x.t?.isRegistered) // only truly registered
       .filter((x) => x.w.isUpcoming || x.w.isLive)
       .sort((a, b) => {
         const aLive = a.w.isLive ? 0 : 1;
@@ -109,18 +162,22 @@ export default function Dashboard() {
         return at - bt;
       })
       .map((x) => x.t);
+
+    // Dedupe by link
     const seen = new Set();
     const uniq = [];
     for (const t of pool) {
-      if (!seen.has(t.link)) {
-        seen.add(t.link);
+      const k = keyOf(t);
+      if (!seen.has(k)) {
+        seen.add(k);
         uniq.push(t);
       }
       if (uniq.length >= 4) break;
     }
     return uniq;
-  }, [registered, allMine]);
+  }, [registered]);
 
+  // Latest results: the most recent completed from my superset
   const latestResults = React.useMemo(() => {
     const completed = (allMine || []).filter(
       (t) => computeWindow(t).isCompleted
@@ -145,7 +202,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Main dashboard layout: 2 columns on large screens */}
+      {/* Main layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left (main) column */}
         <div className="lg:col-span-2 space-y-8">
@@ -154,13 +211,16 @@ export default function Dashboard() {
             <SectionHeader
               title="Your Next Tests"
               icon={<DocumentChartBarIcon className="h-6 w-6 text-indigo-500" />}
-              onAction={() => navigate("/tests?tab=registered")}
+              onAction={() => navigate("/tests?tab=upcoming")}
               actionLabel="View all"
             />
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-64 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                  <div
+                    key={i}
+                    className="h-64 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse"
+                  />
                 ))}
               </div>
             ) : essentials.length === 0 ? (
@@ -171,7 +231,13 @@ export default function Dashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {essentials.map((t) => (
-                  <TestCard key={t.link || t._id} test={t} registered />
+                  <TestCard
+                    key={t.link || t._id}
+                    test={t}
+                    registered={!!t.isRegistered}
+                    onRegistered={handleRegistered}
+                    onUnregistered={handleUnregistered}
+                  />
                 ))}
               </div>
             )}
@@ -188,7 +254,10 @@ export default function Dashboard() {
             {loading ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-40 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                  <div
+                    key={i}
+                    className="h-40 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse"
+                  />
                 ))}
               </div>
             ) : latestResults.length === 0 ? (
@@ -199,13 +268,18 @@ export default function Dashboard() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                 {latestResults.map((t) => (
-                  <div key={t.link} className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5 flex flex-col justify-between hover:shadow-lg transition-shadow duration-300">
+                  <div
+                    key={t.link || t._id}
+                    className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-5 flex flex-col justify-between hover:shadow-lg transition-shadow duration-300"
+                  >
                     <div>
                       <p className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
                         Completed
                       </p>
                       <button
-                        onClick={() => navigate(`/test/${t.link}`, { state: { prefetch: t } })}
+                        onClick={() =>
+                          navigate(`/test/${t.link}`, { state: { prefetch: t } })
+                        }
                         className="mt-1 text-left font-bold text-gray-800 dark:text-gray-200 hover:underline line-clamp-2"
                       >
                         {t.title || "Untitled Test"}
@@ -227,7 +301,11 @@ export default function Dashboard() {
           {/* Profile quick section */}
           <section className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6">
             <div className="flex items-center gap-4">
-              <img src={avatar} alt="User Avatar" className="h-16 w-16 rounded-full object-cover bg-gray-200" />
+              <img
+                src={avatar}
+                alt="User Avatar"
+                className="h-16 w-16 rounded-full object-cover bg-gray-200 dark:bg-gray-700"
+              />
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                   Your Profile
@@ -239,7 +317,7 @@ export default function Dashboard() {
             </div>
             <button
               onClick={() => navigate("/profile")}
-              className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 font-semibold text-sm transition-colors duration-300"
+              className="mt-6 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 font-semibold text-sm transition-colors duration-300 text-gray-900 dark:text-gray-100"
             >
               <UserCircleIcon className="h-5 w-5" />
               <span>Go to Profile</span>
@@ -273,6 +351,7 @@ export default function Dashboard() {
     </div>
   );
 }
+
 
 
 // import React, { useEffect, useState } from 'react';

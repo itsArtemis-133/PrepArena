@@ -1,11 +1,10 @@
-// server/models/Test.js
 const mongoose = require("mongoose");
 
 const TestSchema = new mongoose.Schema(
   {
     title: String,
     description: { type: String, default: "" },
-    syllabus:    { type: String, default: "" },
+    syllabus: { type: String, default: "" },
     subject: String,
     type: String,
     testMode: String,

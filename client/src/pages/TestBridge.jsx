@@ -245,6 +245,18 @@ export default function TestBridge() {
     }
   };
 
+  const unregisterNow = async () => {
+    try {
+      await axios.delete(`/test/${link}/unregister`);
+      setRegistered(false);
+      setTest((t) => ({ ...t, registrationCount: Math.max(0, Number(t?.registrationCount || 0) - 1) }));
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Unable to unregister.";
+      if (err?.response?.status === 401) navigate(`/login?next=/test/${link}`);
+      else alert(msg);
+    }
+  };
+
   // ---------- skeleton / not found ----------
   if (loading && !test) {
     return (
@@ -339,8 +351,6 @@ export default function TestBridge() {
 
             <h1 className="text-3xl md:text-4xl font-extrabold leading-tight">{fmt(test.title)}</h1>
 
-            {/* Removed the hero description below the title as requested */}
-
             {(test.isPublic || test.isCreator) && (
               <div className="mt-2 flex items-center gap-3 flex-wrap">
                 <div className="text-sm bg-white/15 border border-white/20 rounded-lg px-3 py-2 backdrop-blur">
@@ -367,7 +377,6 @@ export default function TestBridge() {
             {/* STATS GRID (aligned) */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 items-stretch">
               <StatCard label="Questions">{fmt(test.questionCount)}</StatCard>
-              {/* <StatCard label="Duration">{fmtMin(test.duration)}</StatCard> */}
               <StatCard label="Scheduled">{start ? start.format("DD MMM YYYY, HH:mm") : "—"}</StatCard>
               <StatCard label="Created by">
                 <div className="flex items-center gap-2">
@@ -623,6 +632,7 @@ export default function TestBridge() {
                     link={link}
                     test={test}
                     registerAndMaybeEnter={registerAndMaybeEnter}
+                    unregisterNow={unregisterNow} // ✅ new
                   />
                 </div>
 
@@ -744,6 +754,7 @@ function ActionButton({
   navigate,
   test,
   registerAndMaybeEnter,
+  unregisterNow, // ✅ added
 }) {
   if (regLoading) {
     return (
@@ -753,6 +764,7 @@ function ActionButton({
     );
   }
 
+  // Not registered
   if (!registered && isUpcoming) {
     return (
       <button
@@ -783,6 +795,8 @@ function ActionButton({
       </button>
     );
   }
+
+  // Registered
   if (registered && isLive) {
     return (
       <button
@@ -793,13 +807,34 @@ function ActionButton({
       </button>
     );
   }
-  if (registered && (isUpcoming || isOver)) {
+
+  // Registered and NOT live and NOT over → show status + Unregister
+  if (registered && !isLive && !isOver) {
     return (
-      <div className="w-full py-3 rounded-xl bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-300 text-center font-semibold shadow">
-        {isUpcoming ? `Registered • Starts ${start?.format("DD MMM, HH:mm")}` : "Test Completed"}
+      <div className="flex flex-col gap-2">
+        <div className="w-full py-3 rounded-xl bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-300 text-center font-semibold shadow">
+          Registered • {start ? `Starts ${start.format("DD MMM, HH:mm")}` : "Start TBA"}
+        </div>
+        <button
+          type="button"
+          onClick={unregisterNow}
+          className="w-full py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm"
+        >
+          Unregister
+        </button>
       </div>
     );
   }
+
+  // Registered and over → status only
+  if (registered && isOver) {
+    return (
+      <div className="w-full py-3 rounded-xl bg-green-100 dark:bg-emerald-900/40 text-green-800 dark:text-emerald-300 text-center font-semibold shadow">
+        Test Completed
+      </div>
+    );
+  }
+
   return null;
 }
 

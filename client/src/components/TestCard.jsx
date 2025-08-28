@@ -7,7 +7,6 @@ import { useNavigate } from "react-router-dom";
 import { ClockIcon, QuestionMarkCircleIcon, UsersIcon } from "@heroicons/react/24/outline";
 import avatar from "../assets/avatar.svg"; // Default avatar
 
-// Chip and StatusBadge components can remain the same
 function Chip({ className = "", children }) {
   return (
     <span className={"inline-flex items-center gap-1 px-2 py-[3px] text-[11px] font-semibold rounded-full " + className}>
@@ -33,18 +32,10 @@ function StatusBadge({ start, end, now }) {
     );
   }
   if (upcoming) {
-    return (
-      <Chip className="bg-indigo-600/15 text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-300">
-        Upcoming
-      </Chip>
-    );
+    return <Chip className="bg-indigo-600/15 text-indigo-700 dark:bg-indigo-500/25 dark:text-indigo-300">Upcoming</Chip>;
   }
   if (over) {
-    return (
-      <Chip className="bg-gray-600/15 text-gray-700 dark:bg-gray-500/25 dark:text-gray-300">
-        Completed
-      </Chip>
-    );
+    return <Chip className="bg-gray-600/15 text-gray-700 dark:bg-gray-500/25 dark:text-gray-300">Completed</Chip>;
   }
   return null;
 }
@@ -54,7 +45,7 @@ const fmtMin = (v) => (Number(v) > 0 ? `${Number(v)} min` : "—");
 export default function TestCard({
   test,
   registered = false,
-  canUnregister = true,
+  canUnregister = true,   // external toggle still respected
   showCreator = true,
   onRegistered,
   onUnregistered,
@@ -87,9 +78,13 @@ export default function TestCard({
         if (!cancel && res?.data?.available && Number.isFinite(res.data.score)) {
           setMyScore({ score: res.data.score, total: res.data.total });
         }
-      } catch { console.error("Could not fetch my score"); }
+      } catch {
+        console.error("Could not fetch my score");
+      }
     })();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, [isOver, test?._id]);
 
   const goBridge = () => navigate(`/test/${test.link}`, { state: { prefetch: test } });
@@ -109,13 +104,20 @@ export default function TestCard({
   };
 
   const unregister = async () => {
+    // Client guard to mirror server: only allow while upcoming
+    if (!isUpcoming) {
+      alert("Cannot unregister after start.");
+      return;
+    }
     if (!canUnregister) return;
+
     setBusy(true);
     try {
-      await axios.post(`/test/${test.link}/unregister`);
+      await axios.delete(`/test/${test.link}/unregister`);
       onUnregistered?.(test);
-    } catch {
-      alert("Could not unregister. It may be too close to start time.");
+    } catch (err) {
+      const msg = err?.response?.data?.message || "Could not unregister. It may be too close to start time.";
+      alert(msg);
     } finally {
       setBusy(false);
     }
@@ -126,32 +128,26 @@ export default function TestCard({
   const showRegister = !registered && (isUpcoming || isLive);
   const showDetails = !registered || (registered && !isLive);
 
-  const Stat = ({ icon, label, value }) => (
-    <div className="flex items-center gap-2 text-sm">
-      {React.cloneElement(icon, { className: "h-5 w-5 text-gray-500 dark:text-gray-400" })}
-      <span className="font-semibold text-gray-800 dark:text-gray-200">{value}</span>
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
-    </div>
-  );
+  // ✅ NEW: Only allow showing Unregister when test is upcoming (not live/over)
+  const canShowUnregister = registered && canUnregister && isUpcoming;
 
   return (
     <div className="group flex h-full flex-col rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm transition-all duration-300 hover:shadow-xl hover:-translate-y-1">
       <div className="p-5 flex-grow flex flex-col">
-        {/* FIX: The header is now a flex container that prevents overflow. */}
         <div className="flex items-start justify-between gap-2">
-          {/* FIX: This container will shrink if needed. */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center flex-wrap gap-2">
               <StatusBadge start={start} end={end} now={now} />
               {showRegisteredPill && (
-                <Chip className="bg-emerald-600/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-300">Registered</Chip>
+                <Chip className="bg-emerald-600/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-300">
+                  Registered
+                </Chip>
               )}
               {test?.isPublic && (
                 <Chip className="bg-violet-600/15 text-violet-700 dark:bg-violet-500/25 dark:text-violet-300">Public</Chip>
               )}
             </div>
           </div>
-          {/* FIX: flex-shrink-0 prevents the date from being crushed. */}
           <div className="flex-shrink-0 text-xs text-right text-gray-500 dark:text-gray-400 font-medium">{rightHint}</div>
         </div>
 
@@ -166,17 +162,31 @@ export default function TestCard({
         {showCreator && (
           <div className="mt-3 flex items-center gap-2">
             <img src={avatar} alt="Creator" className="h-6 w-6 rounded-full bg-gray-200 dark:bg-gray-700" />
-            <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">{test?.createdBy?.username || "—"}</span>
+            <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+              {test?.createdBy?.username || "—"}
+            </span>
             <RatingPill avg={test?.createdBy?.creatorRatingAvg} count={test?.createdBy?.creatorRatingCount} size="xs" />
           </div>
         )}
 
-        <div className="flex-grow"></div>
+        <div className="flex-grow" />
 
         <div className="mt-4 space-y-2">
-            <Stat icon={<ClockIcon />} label="Duration" value={fmtMin(test.duration)} />
-            <Stat icon={<QuestionMarkCircleIcon />} label="Questions" value={Number(test.questionCount || 0) || "—"} />
-            <Stat icon={<UsersIcon />} label="Registered" value={Number(test.registrationCount || 0)} />
+          <div className="flex items-center gap-2 text-sm">
+            <ClockIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{fmtMin(test.duration)}</span>
+            <span className="text-gray-500 dark:text-gray-400">Duration</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <QuestionMarkCircleIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{Number(test.questionCount || 0) || "—"}</span>
+            <span className="text-gray-500 dark:text-gray-400">Questions</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <UsersIcon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{Number(test.registrationCount || 0)}</span>
+            <span className="text-gray-500 dark:text-gray-400">Registered</span>
+          </div>
         </div>
       </div>
 
@@ -187,16 +197,16 @@ export default function TestCard({
               Score: {myScore.score}/{myScore.total}
             </span>
           ) : !registered && isUpcoming && startingSoon ? (
-            <span className="font-semibold text-amber-600 dark:text-amber-400">
-              Starts in {minsToStart} min
-            </span>
+            <span className="font-semibold text-amber-600 dark:text-amber-400">Starts in {minsToStart} min</span>
           ) : null}
         </div>
 
         <div className="flex items-center gap-2">
           {showDetails && (
-            // FIX: Added text color classes to make the button theme-compatible.
-            <button onClick={goBridge} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <button
+              onClick={goBridge}
+              className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200 text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
               {isOver ? "Results" : "View"}
             </button>
           )}
@@ -206,11 +216,12 @@ export default function TestCard({
               onClick={showJoin ? (isLive ? goRunner : goBridge) : register}
               className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm shadow-indigo-500/30 transition-colors"
             >
-              {isLive ? "Enter" : (showJoin ? "Join" : "Register")}
+              {isLive ? "Enter" : showJoin ? "Join" : "Register"}
             </button>
           )}
 
-          {registered && (
+          {/* ✅ Only render Unregister when registered AND upcoming */}
+          {canShowUnregister && (
             <button
               disabled={busy}
               onClick={unregister}
