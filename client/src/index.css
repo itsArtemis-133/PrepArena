@@ -2,18 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Design tokens (used by both themes) ---------- */
+/* ---------- Design tokens ---------- */
 :root {
-  --bg: #0b1220;        /* base page bg in dark */
-  --bg-soft: #0f172a;   /* panels backdrop in dark */
-  --ring: rgba(99,102,241,.25);
+  /* Light theme (can be expanded later) */
+  --ring: rgba(99, 102, 241, 0.25);
+
+  /* ✨ New Expanded Dark Theme Palette */
+  --bg-dark-base: #0b1220;         /* The deepest background (your original --bg) */
+  --bg-dark-surface: #1e293b;      /* Panels, cards (slate-800) */
+  --bg-dark-hover: #334155;        /* Hover states (slate-700) */
+  --border-dark: #334155;          /* Borders (slate-700) */
+
+  --text-dark-primary: #e2e8f0;    /* Main text (slate-200) */
+  --text-dark-secondary: #94a3b8;  /* Muted text (slate-400) */
+
+  --accent-glow: rgba(59, 130, 246, 0.5); /* A vibrant blue for accents */
 }
 
 /* ---------- Component primitives via Tailwind ---------- */
 @layer components {
   /* App page surface */
   .app-surface {
-    @apply min-h-screen bg-slate-50 dark:bg-[var(--bg)];
+    @apply min-h-screen bg-slate-50 dark:bg-[var(--bg-dark-base)];
     background-image:
       radial-gradient(80rem 40rem at 10% -10%, rgba(99,102,241,0.06), transparent 40%),
       radial-gradient(70rem 40rem at 110% -20%, rgba(56,189,248,0.06), transparent 40%);
@@ -23,39 +33,36 @@
   .panel {
     @apply rounded-2xl border shadow-lg;
     @apply bg-white/90 border-slate-200/80;
-    @apply dark:bg-slate-900/80 dark:border-white/10;
+    @apply dark:bg-[var(--bg-dark-surface)] dark:border-[var(--border-dark)] dark:border-t-blue-500/40;
     backdrop-filter: saturate(120%) blur(4px);
   }
 
   /* Section heading text */
   .section-title {
-    @apply text-lg font-semibold text-slate-800 dark:text-slate-200;
+    @apply text-lg font-semibold text-slate-800 dark:text-[var(--text-dark-primary)];
   }
 
   /* Subtle text */
   .muted {
-    @apply text-slate-600 dark:text-slate-400;
+    @apply text-slate-600 dark:text-[var(--text-dark-secondary)];
   }
 
   /* Stat card */
-  .stat {
-    @apply panel p-4;
-  }
-  .stat-k {
-    @apply text-xs uppercase tracking-wide muted;
-  }
-  .stat-v {
-    @apply mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100;
-  }
+  .stat { @apply panel p-4; }
+  .stat-k { @apply text-xs uppercase tracking-wide muted; }
+  .stat-v { @apply mt-1 text-lg font-semibold text-slate-900 dark:text-[var(--text-dark-primary)]; }
 
   /* CTA buttons */
-  .btn { @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition shadow; }
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-xl font-semibold transition shadow;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent dark:ring-offset-[var(--bg-dark-surface)] focus:ring-blue-500 dark:focus:ring-blue-500/80;
+  }
   .btn-primary { @apply btn text-white bg-indigo-600 hover:bg-indigo-700; }
   .btn-emerald { @apply btn text-white bg-emerald-600 hover:bg-emerald-700; }
-  .btn-ghost   { @apply btn bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700; }
+  .btn-ghost   { @apply btn bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800/50 dark:text-slate-200 dark:hover:bg-[var(--bg-dark-hover)]; }
   .btn-disabled { @apply btn bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400 cursor-not-allowed; }
 
-  /* Hero */
+  /* ... other components ... */
   .hero {
     @apply relative overflow-hidden rounded-3xl text-white shadow-2xl;
     @apply bg-gradient-to-br from-indigo-600 to-blue-600 dark:from-indigo-700 dark:to-blue-700;
@@ -66,17 +73,9 @@
       radial-gradient(45rem 25rem at 0% -10%, rgba(255,255,255,.11), transparent 60%),
       radial-gradient(30rem 20rem at 110% -20%, rgba(255,255,255,.08), transparent 60%);
   }
-
-  /* Pills */
-  .pill {
-    @apply inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold;
-  }
-  .pill-blue    { @apply bg-blue-600/90 text-white; }
-  .pill-emerald { @apply bg-emerald-600/90 text-white; }
-  .pill-gray    { @apply bg-slate-800/90 text-slate-200; }
 }
 
-/* Smooth scroll + clean scrollbars */
+/* ... your scrollbar styles ... */
 html { scroll-behavior: smooth; }
 * { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.5) transparent; }
 *::-webkit-scrollbar { width: 10px; height: 10px; }

@@ -3,13 +3,16 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import { useAuth } from "../hooks/useAuth";
-import heroImage from "../assets/hero.svg";
+//import heroImage from "../assets/hero.svg";
+import lotty from "../assets/exam_preparation.lottie";
 import logo from "../assets/preparena-v3-icon.svg";
 import {
   DocumentTextIcon,
   ClockIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
+
+import { DotLottiePlayer } from "@dotlottie/react-player";
 
 const LandingPage = () => {
   const { token, login } = useAuth();
@@ -113,9 +116,16 @@ const LandingPage = () => {
                 {token ? "Go to Dashboard" : "Get Started"}
               </button>
             </div>
-            <div className="md:w-1/2 flex justify-center md:justify-end">
+            {/* <div className="md:w-1/2 flex justify-center md:justify-end">
               <img src={heroImage} alt="UPSC preparation" className="w-full max-w-md h-auto" />
-            </div>
+            </div> */}
+             <div className="w-full max-w-lg h-auto">
+      <DotLottiePlayer
+        src={lotty}
+        autoplay
+        loop
+      />
+  </div>
           </section>
 
           <section id="features" className="scroll-mt-16 px-6 py-24 bg-gray-50 dark:bg-gray-800">
