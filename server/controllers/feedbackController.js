@@ -1,124 +1,148 @@
 // server/controllers/feedbackController.js
-const mongoose = require("mongoose");
+const Feedback = require("../models/Feedback");
 const Test = require("../models/Test");
+const User = require("../models/User");
 
-// Optional models (app should still run if they’re absent during local dev)
-let Submission;
-try { Submission = require("../models/Submission"); } catch {}
-let Feedback;
-try { Feedback = require("../models/Feedback"); } catch {}
+/**
+ * Adjust creator's denormalized rating aggregate on User.
+ * op: "create" | "update" | "delete"
+ */
+async function adjustCreatorAggregate(creatorId, op, oldRating, newRating) {
+  const creator = await User.findById(creatorId).select("creatorRatingAvg creatorRatingCount");
+  if (!creator) return;
 
-/** ---------- helpers ---------- */
-const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+  let { creatorRatingAvg: avg, creatorRatingCount: count } = creator;
 
-const computeWindow = (d) => {
-  const start = d?.scheduledDate ? new Date(d.scheduledDate).getTime() : null;
-  const end   = start && n(d?.duration) ? start + n(d.duration) * 60 * 1000 : null;
-  const now   = Date.now();
-  return {
-    isUpcoming: !!(start && now < start),
-    isLive:     !!(start && end && now >= start && now < end),
-    isCompleted:!!(end && now >= end),
-  };
-};
+  if (op === "create") {
+    const sum = avg * count + newRating;
+    count += 1;
+    avg = sum / count;
+  } else if (op === "update") {
+    const sum = avg * count - oldRating + newRating;
+    avg = count > 0 ? sum / count : 0;
+  } else if (op === "delete") {
+    if (count <= 1) {
+      avg = 0; count = 0;
+    } else {
+      const sum = avg * count - oldRating;
+      count -= 1;
+      avg = sum / count;
+    }
+  }
 
-/** ---------- controllers ---------- */
+  await User.updateOne(
+    { _id: creatorId },
+    { $set: { creatorRatingAvg: Number(avg.toFixed(4)), creatorRatingCount: count } }
+  );
+}
 
-// GET /api/test/:id/feedback  (optional auth)
-// -> { avg, count, my }
-exports.getFeedback = async (req, res) => {
+/**
+ * Utility: robustly read testId from either :id or :testId to match existing routes.
+ */
+function getTestId(req) {
+  return req.params.id || req.params.testId;
+}
+
+/**
+ * POST /test/:id/feedback  (create or update rating for this test by the current user)
+ * Body: { rating: 1..5, comment?: string }
+ * Enforces single feedback per (test,user). If rating changes, adjusts creator aggregate.
+ */
+exports.upsertFeedback = async function upsertFeedback(req, res) {
   try {
-    if (!Feedback) return res.json({ avg: 0, count: 0, my: null });
+    const testId = getTestId(req);
+    const { rating, comment = "" } = req.body;
+    const raterId = req.user.id;
 
-    const { id } = req.params;
-    const uid = req.user?.id || null;
-    const objId = new mongoose.Types.ObjectId(id);
-
-    // Aggregate avg & count for non-null ratings
-    const [agg] = await Feedback.aggregate([
-      { $match: { testId: objId, rating: { $ne: null } } },
-      { $group: { _id: null, count: { $sum: 1 }, avg: { $avg: "$rating" } } },
-    ]);
-
-    let my = null;
-    if (uid) {
-      my = await Feedback.findOne({ testId: id, userId: uid }).lean();
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: "Rating must be between 1 and 5" });
     }
 
-    const avg = agg?.avg ? Math.round(agg.avg * 10) / 10 : 0;
-    const count = agg?.count || 0;
+    const test = await Test.findById(testId).select("createdBy status");
+    if (!test) return res.status(404).json({ message: "Test not found" });
 
-    res.json({ avg, count, my });
+    // If you gate ratings to "only after completion", keep your existing check here
+    // await ensureUserCompletedTest(raterId, testId);
+
+    const existing = await Feedback.findOne({ testId, userId: raterId }).lean();
+
+    if (!existing) {
+      await Feedback.create({ testId, userId: raterId, rating, comment });
+      await adjustCreatorAggregate(test.createdBy, "create", null, rating);
+    } else {
+      const changedRating = existing.rating !== rating;
+      if (changedRating || existing.comment !== comment) {
+        await Feedback.updateOne({ _id: existing._id }, { $set: { rating, comment } });
+        if (changedRating) {
+          await adjustCreatorAggregate(test.createdBy, "update", existing.rating, rating);
+        }
+      }
+    }
+
+    return res.json({ ok: true });
   } catch (err) {
-    res.json({ avg: 0, count: 0, my: null });
+    if (err?.code === 11000) {
+      // unique index on (testId, userId)
+      return res.status(409).json({ message: "Feedback already exists" });
+    }
+    console.error("upsertFeedback error", err);
+    return res.status(500).json({ message: "Failed to save feedback" });
   }
 };
 
-// POST /api/test/:id/feedback  (require auth)
-// body: { rating (1..5 or null), comment }
-exports.upsertFeedback = async (req, res) => {
+/**
+ * DELETE /test/:id/feedback  (delete current user's feedback for this test)
+ */
+exports.deleteFeedback = async function deleteFeedback(req, res) {
   try {
-    if (!Feedback) return res.status(501).json({ message: "Feedback not enabled" });
+    const testId = getTestId(req);
+    const raterId = req.user.id;
 
-    const { id } = req.params;
-    const uid = req.user?.id;
-    if (!uid) return res.status(401).json({ message: "Unauthorized" });
-
-    const test = await Test.findById(id);
+    const test = await Test.findById(testId).select("createdBy");
     if (!test) return res.status(404).json({ message: "Test not found" });
 
-    const w = computeWindow(test);
-    if (!w.isCompleted) return res.status(400).json({ message: "Feedback opens only after completion" });
+    const fb = await Feedback.findOne({ testId, userId: raterId });
+    if (!fb) return res.status(404).json({ message: "Feedback not found" });
 
-    // Only participants (creator / registered / submitted) can rate
-    const isCreator = String(test.createdBy) === String(uid);
-    const wasRegistered = Array.isArray(test.registrations) && test.registrations.some((x) => String(x) === String(uid));
-    const hasSubmission = Submission ? await Submission.exists({ testId: id, userId: uid }) : false;
+    await Feedback.deleteOne({ _id: fb._id });
+    await adjustCreatorAggregate(test.createdBy, "delete", fb.rating, null);
 
-    if (!(isCreator || wasRegistered || hasSubmission)) {
-      return res.status(403).json({ message: "Only participants can leave feedback" });
-    }
-
-    const { rating, comment } = req.body;
-
-    // Clear if rating is null/undefined
-    if (rating === null || rating === undefined) {
-      await Feedback.deleteOne({ testId: id, userId: uid });
-      return res.json({ ok: true, cleared: true });
-    }
-
-    const r = Number(rating);
-    if (!Number.isFinite(r) || r < 1 || r > 5) {
-      return res.status(422).json({ message: "Invalid rating" });
-    }
-
-    const doc = await Feedback.findOneAndUpdate(
-      { testId: id, userId: uid },
-      { $set: { rating: r, comment: String(comment || "") } },
-      { upsert: true, new: true }
-    );
-
-    res.json({ ok: true, feedback: doc });
+    return res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("deleteFeedback error", err);
+    return res.status(500).json({ message: "Failed to delete feedback" });
   }
 };
 
-// DELETE /api/test/:id/feedback  (require auth)
-exports.deleteFeedback = async (req, res) => {
+/**
+ * GET /test/:id/feedback  (list feedback for a test + summary + "my" feedback)
+ * Kept for your Bridge view; returns { items, summary: { avg, count }, my }
+ */
+exports.listFeedbackForTest = async function listFeedbackForTest(req, res) {
   try {
-    if (!Feedback) return res.status(501).json({ message: "Feedback not enabled" });
+    const testId = getTestId(req);
+    const me = req.user?.id || null;
 
-    const { id } = req.params;
-    const uid = req.user?.id;
-    if (!uid) return res.status(401).json({ message: "Unauthorized" });
+    const items = await Feedback.find({ testId })
+      .select("userId rating comment createdAt")
+      .populate("userId", "username name")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const test = await Test.findById(id);
-    if (!test) return res.status(404).json({ message: "Test not found" });
+    let sum = 0;
+    for (const x of items) sum += x.rating;
+    const count = items.length;
+    const avg = count ? Number((sum / count).toFixed(2)) : 0;
 
-    await Feedback.deleteOne({ testId: id, userId: uid });
-    res.json({ ok: true, cleared: true });
+    const my = me ? items.find((x) => String(x.userId?._id || x.userId) === String(me)) : null;
+
+    return res.json({
+      items,
+      summary: { avg, count },
+      my: my ? { rating: my.rating, comment: my.comment } : null,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("listFeedbackForTest error", err);
+    return res.status(500).json({ message: "Failed to load feedback" });
   }
 };

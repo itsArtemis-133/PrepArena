@@ -1,20 +1,29 @@
-// server/controllers/testController.js
 const { v4: uuidv4 } = require("uuid");
 const Test = require("../models/Test");
+const User = require("../models/User");
+
 let Submission;
-try { Submission = require("../models/Submission"); } catch {}
+try {
+  Submission = require("../models/Submission");
+} catch {}
+
+/** ---------------- constants ---------------- */
+const CREATOR_PROJECTION =
+  "username name creatorRatingAvg creatorRatingCount";
 
 /** ---------------- helpers ---------------- */
-const n = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+const n = (v) =>
+  Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
 
 const computeWindow = (d) => {
   const start = d?.scheduledDate ? new Date(d.scheduledDate).getTime() : null;
-  const end   = start && n(d?.duration) ? start + n(d.duration) * 60 * 1000 : null;
-  const now   = Date.now();
+  const end =
+    start && n(d?.duration) ? start + n(d.duration) * 60 * 1000 : null;
+  const now = Date.now();
   return {
     isUpcoming: !!(start && now < start),
-    isLive:     !!(start && end && now >= start && now < end),
-    isCompleted:!!(end && now >= end),
+    isLive: !!(start && end && now >= start && now < end),
+    isCompleted: !!(end && now >= end),
   };
 };
 
@@ -24,13 +33,30 @@ const shape = (doc, userId = null) => {
 
   const createdBy =
     d?.createdBy && typeof d.createdBy === "object"
-      ? { _id: String(d.createdBy._id || d.createdBy), username: d.createdBy.username || d.createdBy.name || "" }
-      : d?.createdBy ? { _id: String(d.createdBy), username: "" } : null;
+      ? {
+          _id: String(d.createdBy._id || d.createdBy),
+          username: d.createdBy.username || d.createdBy.name || "",
+          creatorRatingAvg: d.createdBy.creatorRatingAvg || 0,
+          creatorRatingCount: d.createdBy.creatorRatingCount || 0,
+        }
+      : d?.createdBy
+      ? {
+          _id: String(d.createdBy),
+          username: "",
+          creatorRatingAvg: 0,
+          creatorRatingCount: 0,
+        }
+      : null;
 
   const creatorId =
     d?.createdBy && typeof d.createdBy === "object"
       ? String(d.createdBy._id || d.createdBy)
       : String(d?.createdBy || "");
+
+  const userRegistered =
+    userId && Array.isArray(d?.registrations)
+      ? d.registrations.some((id) => String(id) === String(userId))
+      : false;
 
   return {
     _id: d?._id,
@@ -47,11 +73,14 @@ const shape = (doc, userId = null) => {
     status: d?.status || "Scheduled",
     isPublic: !!d?.isPublic,
     pdfUrl: d?.pdfUrl || "",
-    answersPdfUrl: d?.answersPdfUrl || "", // NEW
+    answersPdfUrl: d?.answersPdfUrl || "",
     createdBy,
     isCreator: userId ? creatorId === String(userId) : false,
-    registrationCount: Array.isArray(d?.registrations) ? d.registrations.length : 0,
-    window: w, // { isUpcoming, isLive, isCompleted }
+    isRegistered: userRegistered,
+    registrationCount: Array.isArray(d?.registrations)
+      ? d.registrations.length
+      : 0,
+    window: w,
   };
 };
 
@@ -61,9 +90,19 @@ const shape = (doc, userId = null) => {
 exports.createTest = async (req, res, next) => {
   try {
     const {
-      title, description, syllabus, subject, type, testMode,
-      scheduledDate, duration, questionCount, isPublic = false,
-      pdfUrl, answersPdfUrl, answerKey,
+      title,
+      description,
+      syllabus,
+      subject,
+      type,
+      testMode,
+      scheduledDate,
+      duration,
+      questionCount,
+      isPublic = false,
+      pdfUrl,
+      answersPdfUrl,
+      answerKey,
     } = req.body;
 
     const userId = req.user?.id || null;
@@ -84,15 +123,17 @@ exports.createTest = async (req, res, next) => {
       answerKey: answerKey || {},
       link: uuidv4(),
       createdBy: userId,
-      registrations: userId ? [userId] : [],
+      registrations: [], // ✅ Plan B: creator NOT auto-registered
       status: "Scheduled",
     });
 
     res.status(201).json({ test: shape(doc, userId) });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
-// PATCH /api/test/:id  (creator only, only before start)
+// PATCH /api/test/:id
 exports.updateTest = async (req, res) => {
   try {
     const uid = req.user?.id;
@@ -109,13 +150,25 @@ exports.updateTest = async (req, res) => {
     }
 
     const allowed = [
-      "title","description","syllabus","subject","type","testMode",
-      "scheduledDate","duration","questionCount","isPublic","pdfUrl","answersPdfUrl"
+      "title",
+      "description",
+      "syllabus",
+      "subject",
+      "type",
+      "testMode",
+      "scheduledDate",
+      "duration",
+      "questionCount",
+      "isPublic",
+      "pdfUrl",
+      "answersPdfUrl",
     ];
     allowed.forEach((k) => {
       if (k in req.body) {
-        if (k === "scheduledDate") test[k] = req.body[k] ? new Date(req.body[k]) : null;
-        else if (k === "duration" || k === "questionCount") test[k] = n(req.body[k]);
+        if (k === "scheduledDate")
+          test[k] = req.body[k] ? new Date(req.body[k]) : null;
+        else if (k === "duration" || k === "questionCount")
+          test[k] = n(req.body[k]);
         else test[k] = req.body[k];
       }
     });
@@ -127,7 +180,7 @@ exports.updateTest = async (req, res) => {
   }
 };
 
-// GET /api/test  (?status=Scheduled&scope=created|registered|all)
+// GET /api/test
 exports.getMyTests = async (req, res, next) => {
   try {
     const { status, scope = "created" } = req.query;
@@ -147,10 +200,12 @@ exports.getMyTests = async (req, res, next) => {
 
     const docs = await Test.find(q)
       .sort({ scheduledDate: 1, createdAt: -1 })
-      .populate("createdBy", "username name");
+      .populate("createdBy", CREATOR_PROJECTION);
 
     res.json({ tests: docs.map((d) => shape(d, uid)) });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 // GET /api/test/public
@@ -166,7 +221,7 @@ exports.getPublicTests = async (req, res) => {
       ],
     })
       .sort({ scheduledDate: 1, createdAt: -1 })
-      .populate("createdBy", "username name");
+      .populate("createdBy", CREATOR_PROJECTION);
 
     res.json({ tests: docs.map((d) => shape(d, req.user?.id)) });
   } catch (err) {
@@ -178,10 +233,15 @@ exports.getPublicTests = async (req, res) => {
 // GET /api/test/public/:link
 exports.getPublicTest = async (req, res, next) => {
   try {
-    const doc = await Test.findOne({ link: req.params.link }).populate("createdBy", "username name");
+    const doc = await Test.findOne({ link: req.params.link }).populate(
+      "createdBy",
+      CREATOR_PROJECTION
+    );
     if (!doc) return res.status(404).json({ message: "Test not found" });
     res.json({ test: shape(doc, req.user?.id) });
-  } catch (err) { next(err); }
+  } catch (err) {
+    next(err);
+  }
 };
 
 // GET /api/test/registered/:link
@@ -195,10 +255,8 @@ exports.checkRegistration = async (req, res) => {
 
     const isCreator = String(test.createdBy) === String(uid);
     const registered =
-      isCreator ||
-      (Array.isArray(test.registrations)
-        ? test.registrations.some((id) => String(id) === String(uid))
-        : false);
+      Array.isArray(test.registrations) &&
+      test.registrations.some((id) => String(id) === String(uid));
 
     res.json({ registered, isCreator });
   } catch (err) {
@@ -221,13 +279,17 @@ exports.registerForTest = async (req, res) => {
       await test.save();
     }
 
-    res.json({ ok: true, registered: true, registrationCount: test.registrations.length });
+    res.json({
+      ok: true,
+      registered: true,
+      registrationCount: test.registrations.length,
+    });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// POST /api/test/:link/unregister  (auth; only while upcoming)
+// DELETE /api/test/:link/unregister
 exports.unregisterForTest = async (req, res) => {
   try {
     const test = await Test.findOne({ link: req.params.link });
@@ -237,20 +299,31 @@ exports.unregisterForTest = async (req, res) => {
     if (!uid) return res.status(401).json({ message: "Unauthorized" });
 
     const w = computeWindow(test);
-    if (!w.isUpcoming) {
-      return res.status(400).json({ message: "Cannot unregister after start" });
+
+    // ✅ New rule: block only if live or completed (unscheduled is allowed)
+    if (w.isLive || w.isCompleted) {
+      return res.status(400).json({ message: "Cannot unregister during or after the test" });
     }
 
     if (!Array.isArray(test.registrations)) test.registrations = [];
     const before = test.registrations.length;
-    test.registrations = test.registrations.filter((id) => String(id) !== String(uid));
-    if (test.registrations.length !== before) await test.save();
 
-    res.json({ ok: true, registered: false, registrationCount: test.registrations.length });
+    // Remove user if present (idempotent)
+    test.registrations = test.registrations.filter((id) => String(id) !== String(uid));
+    if (test.registrations.length !== before) {
+      await test.save();
+    }
+
+    return res.json({
+      ok: true,
+      registered: false,
+      registrationCount: test.registrations.length,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // POST /api/test/:id/submit
 exports.submitAnswers = async (req, res) => {
@@ -279,10 +352,11 @@ exports.submitAnswers = async (req, res) => {
   }
 };
 
-// GET /api/test/:id/leaderboard  (pagination)
+// GET /api/test/:id/leaderboard
 exports.getLeaderboard = async (req, res) => {
   try {
-    if (!Submission) return res.json({ results: [], total: 0, page: 1, limit: 25 });
+    if (!Submission)
+      return res.json({ results: [], total: 0, page: 1, limit: 25 });
 
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: "Test not found" });
@@ -294,26 +368,40 @@ exports.getLeaderboard = async (req, res) => {
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs.map((s) => {
-      const answers = s.answers || {};
-      let score = 0;
-      for (const q in key) {
-        if (
-          answers[q] &&
-          String(answers[q]).toUpperCase() === String(key[q]).toUpperCase()
-        ) score++;
-      }
-      return {
-        _id: s._id,
-        user: { _id: s.userId?._id, name: s.userId?.name || s.userId?.username || "—" },
-        score,
-        total: totalQ,
-        submittedAt: s.submittedAt,
-      };
-    }).sort((a, b) => b.score - a.score || new Date(a.submittedAt) - new Date(b.submittedAt));
+    const scored = subs
+      .map((s) => {
+        const answers = s.answers || {};
+        let score = 0;
+        for (const q in key) {
+          if (
+            answers[q] &&
+            String(answers[q]).toUpperCase() ===
+              String(key[q]).toUpperCase()
+          )
+            score++;
+        }
+        return {
+          _id: s._id,
+          user: {
+            _id: s.userId?._id,
+            name: s.userId?.name || s.userId?.username || "—",
+          },
+          score,
+          total: totalQ,
+          submittedAt: s.submittedAt,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          new Date(a.submittedAt) - new Date(b.submittedAt)
+      );
 
     const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number(req.query.limit || 25))
+    );
     const start = (page - 1) * limit;
     const paged = scored.slice(start, start + limit);
 
@@ -328,7 +416,10 @@ exports.getLeaderboardCsv = async (req, res) => {
   try {
     if (!Submission) {
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=leaderboard.csv"
+      );
       return res.send("rank,user,score,total,submittedAt\n");
     }
 
@@ -342,27 +433,45 @@ exports.getLeaderboardCsv = async (req, res) => {
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs.map((s) => {
-      const answers = s.answers || {};
-      let score = 0;
-      for (const q in key) {
-        if (answers[q] && String(answers[q]).toUpperCase() === String(key[q]).toUpperCase()) score++;
-      }
-      return {
-        user: s.userId?.name || s.userId?.username || "—",
-        score,
-        total: totalQ,
-        submittedAt: s.submittedAt ? new Date(s.submittedAt).toISOString() : "",
-      };
-    }).sort((a, b) => b.score - a.score || new Date(a.submittedAt) - new Date(b.submittedAt));
+    const scored = subs
+      .map((s) => {
+        const answers = s.answers || {};
+        let score = 0;
+        for (const q in key) {
+          if (
+            answers[q] &&
+            String(answers[q]).toUpperCase() ===
+              String(key[q]).toUpperCase()
+          )
+            score++;
+        }
+        return {
+          user: s.userId?.name || s.userId?.username || "—",
+          score,
+          total: totalQ,
+          submittedAt: s.submittedAt
+            ? new Date(s.submittedAt).toISOString()
+            : "",
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          new Date(a.submittedAt) - new Date(b.submittedAt)
+      );
 
     let csv = "rank,user,score,total,submittedAt\n";
     scored.forEach((row, idx) => {
-      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${row.score},${row.total},${row.submittedAt}\n`;
+      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${
+        row.score
+      },${row.total},${row.submittedAt}\n`;
     });
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=leaderboard.csv"
+    );
     res.send(csv);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -384,7 +493,7 @@ exports.getSolution = async (req, res) => {
   }
 };
 
-// GET /api/test/:id/results/me  (auth) — with per-question breakdown
+// GET /api/test/:id/results/me
 exports.getMyResult = async (req, res) => {
   try {
     if (!Submission) return res.json({ available: false });
@@ -398,19 +507,24 @@ exports.getMyResult = async (req, res) => {
     const w = computeWindow(test);
     if (!w.isCompleted) return res.json({ available: false });
 
-    const sub = await Submission.findOne({ testId: req.params.id, userId: uid }).lean();
+    const sub = await Submission.findOne({
+      testId: req.params.id,
+      userId: uid,
+    }).lean();
     if (!sub) return res.json({ available: false });
 
     const key = test.answerKey || {};
     const answers = sub.answers || {};
-    const keys = Object.keys(key).sort((a,b) => Number(a) - Number(b));
+    const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
     const zeroIndexed = keys.includes("0");
 
     let score = 0;
     let attempted = 0;
     const details = keys.map((q) => {
       const correct = String(key[q]).toUpperCase();
-      const marked = answers[q] ? String(answers[q]).toUpperCase() : null;
+      const marked = answers[q]
+        ? String(answers[q]).toUpperCase()
+        : null;
       const isCorrect = !!marked && marked === correct;
       if (marked) attempted++;
       if (isCorrect) score++;
