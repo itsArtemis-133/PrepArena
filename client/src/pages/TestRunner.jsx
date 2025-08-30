@@ -1,5 +1,5 @@
 // client/src/pages/TestRunner.jsx
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "../api/axiosConfig";
 import OptionGrid from "../components/OptionGrid";
@@ -16,6 +16,11 @@ export default function TestRunner() {
   const [disableGrid, setDisableGrid] = useState(true);
   const [submitState, setSubmitState] = useState("idle"); // idle | submitting | done
   const [regChecked, setRegChecked] = useState(false);
+
+  // PDF (secured) state
+  const [pdfBlobUrl, setPdfBlobUrl] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
 
   // Fullscreen
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -47,15 +52,15 @@ export default function TestRunner() {
     const headerEl = document.querySelector("header");
     if (headerEl) ro.observe(headerEl);
     const onResize = () => measureHeader();
-    window.addEventListener("resize", onResize);
 
+    window.addEventListener("resize", onResize);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", onResize);
     };
   }, []);
 
-  // Lock body scroll while runner is mounted (apply defensively more than once)
+  // Lock body scroll while runner is mounted
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -174,6 +179,39 @@ export default function TestRunner() {
     return () => { cancel = true; };
   }, [link, navigate, test]);
 
+  // derive testId once we have test
+  const testId = useMemo(() => (test?._id || test?.id || ""), [test]);
+
+  // Securely fetch the PDF (auth-protected route) and create a blob URL
+  useEffect(() => {
+    if (!regChecked || !testId) return;
+    let isUnmounted = false;
+    let objectUrl = "";
+
+    async function fetchPdf() {
+      setPdfLoading(true);
+      setPdfError("");
+      try {
+        const res = await axios.get(`/test/${testId}/pdf`, { responseType: "blob" });
+        objectUrl = URL.createObjectURL(res.data);
+        if (!isUnmounted) setPdfBlobUrl(objectUrl);
+      } catch  {
+        if (!isUnmounted) {
+          setPdfError("Failed to load question paper. Please refresh or try again.");
+          setPdfBlobUrl("");
+        }
+      } finally {
+        if (!isUnmounted) setPdfLoading(false);
+      }
+    }
+
+    fetchPdf();
+    return () => {
+      isUnmounted = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [regChecked, testId]);
+
   if (!test || !regChecked) {
     return (
       <div
@@ -185,14 +223,7 @@ export default function TestRunner() {
     );
   }
 
-  const { pdfUrl, duration, questionCount, scheduledDate, _id: testId } = test;
-
-  const getPdfPath = () => {
-    if (!pdfUrl) return "";
-    if (pdfUrl.startsWith("/uploads/")) return pdfUrl;
-    if (pdfUrl.startsWith("http")) return pdfUrl;
-    return `/uploads/${pdfUrl}`;
-  };
+  const { duration, questionCount, scheduledDate, _id: tId } = test;
 
   const showToast = (text, tone = "info", ms = 2200) => {
     setToast({ show: true, text, tone });
@@ -205,7 +236,7 @@ export default function TestRunner() {
     setSubmitState("submitting");
     setEndOverlay({ show: true, status: "submitting" }); // smooth overlay, no scroll jump
     try {
-      await axios.post(`/test/${testId}/submit`, { answers });
+      await axios.post(`/test/${tId}/submit`, { answers });
       setSubmitState("done");
       setEndOverlay({ show: true, status: "done" });
       showToast("Test submitted successfully.", "success");
@@ -220,7 +251,6 @@ export default function TestRunner() {
         showToast("Failed to submit. Please try again.", "error", 2800);
       }
       setSubmitState("idle");
-      // Keep overlay visible briefly, then hide so user can retry
       setTimeout(() => setEndOverlay({ show: false, status: "submitting" }), 1200);
     }
   };
@@ -234,7 +264,6 @@ export default function TestRunner() {
       className="flex min-h-0 overflow-hidden app-surface relative"
       style={{
         ...runnerStyle,
-        // Make sure wheel/scroll never escapes into body:
         overscrollBehavior: "contain",
         WebkitOverflowScrolling: "touch",
       }}
@@ -254,7 +283,16 @@ export default function TestRunner() {
         style={{ borderColor: "var(--border)" }}
       >
         <div className="flex-1 min-h-0 overflow-hidden">
-          <PdfViewer fileUrl={getPdfPath()} />
+          {/* Show loader / error states, else render PdfViewer with blob URL */}
+          {pdfLoading && (
+            <div className="p-4 text-sm text-gray-600">Loading question paper…</div>
+          )}
+          {pdfError && (
+            <div className="p-4 text-sm text-red-600">{pdfError}</div>
+          )}
+          {!pdfLoading && !pdfError && pdfBlobUrl && (
+            <PdfViewer fileUrl={pdfBlobUrl} />
+          )}
         </div>
       </div>
 
@@ -268,7 +306,7 @@ export default function TestRunner() {
           <Timer
             scheduledDate={scheduledDate}
             duration={duration}
-            onTimeUp={handleSubmit} // when time ends, show overlay + submit
+            onTimeUp={handleSubmit}
             isTestStarted={isTestStarted}
             setIsTestStarted={setIsTestStarted}
             disableGrid={disableGrid}
@@ -320,7 +358,7 @@ export default function TestRunner() {
         </div>
       </div>
 
-      {/* End overlay (prevents layout jump & accidental scroll) */}
+      {/* End overlay */}
       {endOverlay.show && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="rounded-2xl bg-white dark:bg-gray-900 border dark:border-gray-800 shadow-xl p-6 max-w-sm w-[92%] text-center">

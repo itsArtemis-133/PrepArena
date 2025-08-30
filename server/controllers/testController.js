@@ -362,46 +362,51 @@ exports.getLeaderboard = async (req, res) => {
     if (!test) return res.status(404).json({ message: "Test not found" });
 
     const key = test.answerKey || {};
-    const totalQ = Object.keys(key).length;
+    const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
+    const totalQuestions = keys.length;
+    const MARK_CORRECT = 2;            // UPSC GS: +2
+    const MARK_WRONG   = -2 / 3;       // UPSC GS: -0.666...
 
     const subs = await Submission.find({ testId: req.params.id })
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs
-      .map((s) => {
-        const answers = s.answers || {};
-        let score = 0;
-        for (const q in key) {
-          if (
-            answers[q] &&
-            String(answers[q]).toUpperCase() ===
-              String(key[q]).toUpperCase()
-          )
-            score++;
+    const scored = subs.map((s) => {
+      const answers = s.answers || {};
+      let score = 0;
+      let attempted = 0;
+
+      for (const q of keys) {
+        const correct = String(key[q]).toUpperCase();
+        const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
+        if (marked) {
+          attempted++;
+          if (marked === correct) score += MARK_CORRECT;
+          else score += MARK_WRONG;
         }
-        return {
-          _id: s._id,
-          user: {
-            _id: s.userId?._id,
-            name: s.userId?.name || s.userId?.username || "—",
-          },
-          score,
-          total: totalQ,
-          submittedAt: s.submittedAt,
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          new Date(a.submittedAt) - new Date(b.submittedAt)
-      );
+      }
+
+      return {
+        _id: s._id,
+        user: {
+          _id: s.userId?._id,
+          name: s.userId?.name || s.userId?.username || "—",
+        },
+        score: Number(score.toFixed(3)),
+        total: totalQuestions * MARK_CORRECT,   // total possible marks
+        attempted,
+        submittedAt: s.submittedAt,
+      };
+    })
+    // Higher score first; tie-breaker: earlier submission wins
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        new Date(a.submittedAt) - new Date(b.submittedAt)
+    );
 
     const page = Math.max(1, Number(req.query.page || 1));
-    const limit = Math.min(
-      100,
-      Math.max(1, Number(req.query.limit || 25))
-    );
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
     const start = (page - 1) * limit;
     const paged = scored.slice(start, start + limit);
 
@@ -411,85 +416,68 @@ exports.getLeaderboard = async (req, res) => {
   }
 };
 
+
 // GET /api/test/:id/leaderboard.csv
 exports.getLeaderboardCsv = async (req, res) => {
   try {
     if (!Submission) {
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
-        "Content-Disposition",
-        "attachment; filename=leaderboard.csv"
-      );
-      return res.send("rank,user,score,total,submittedAt\n");
+      res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+      return res.send("rank,user,score,total,attempted,submittedAt\n");
     }
 
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: "Test not found" });
 
     const key = test.answerKey || {};
-    const totalQ = Object.keys(key).length;
+    const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
+    const totalQuestions = keys.length;
+    const MARK_CORRECT = 2;          // UPSC GS
+    const MARK_WRONG   = -2 / 3;     // UPSC GS
 
     const subs = await Submission.find({ testId: req.params.id })
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs
-      .map((s) => {
-        const answers = s.answers || {};
-        let score = 0;
-        for (const q in key) {
-          if (
-            answers[q] &&
-            String(answers[q]).toUpperCase() ===
-              String(key[q]).toUpperCase()
-          )
-            score++;
-        }
-        return {
-          user: s.userId?.name || s.userId?.username || "—",
-          score,
-          total: totalQ,
-          submittedAt: s.submittedAt
-            ? new Date(s.submittedAt).toISOString()
-            : "",
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          new Date(a.submittedAt) - new Date(b.submittedAt)
-      );
+    const scored = subs.map((s) => {
+      const answers = s.answers || {};
+      let score = 0;
+      let attempted = 0;
 
-    let csv = "rank,user,score,total,submittedAt\n";
+      for (const q of keys) {
+        const correct = String(key[q]).toUpperCase();
+        const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
+        if (marked) {
+          attempted++;
+          if (marked === correct) score += MARK_CORRECT;
+          else score += MARK_WRONG;
+        }
+      }
+
+      return {
+        user: s.userId?.name || s.userId?.username || "—",
+        score: Number(score.toFixed(3)),
+        total: totalQuestions * MARK_CORRECT,
+        attempted,
+        submittedAt: s.submittedAt ? new Date(s.submittedAt).toISOString() : "",
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        new Date(a.submittedAt) - new Date(b.submittedAt)
+    );
+
+    let csv = "rank,user,score,total,attempted,submittedAt\n";
     scored.forEach((row, idx) => {
-      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${
-        row.score
-      },${row.total},${row.submittedAt}\n`;
+      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${row.score},${row.total},${row.attempted},${row.submittedAt}\n`;
     });
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader(
-      "Content-Disposition",
-      "attachment; filename=leaderboard.csv"
-    );
+    res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
     res.send(csv);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
-  }
-};
-
-// GET /api/test/:id/solution
-exports.getSolution = async (req, res) => {
-  try {
-    const test = await Test.findById(req.params.id);
-    if (!test) return res.status(404).json({ message: "Test not found" });
-
-    const w = computeWindow(test);
-    if (!w.isCompleted) return res.json({ available: false, answerKey: {} });
-
-    res.json({ available: true, answerKey: test.answerKey || {} });
-  } catch {
-    res.json({ available: false, answerKey: {} });
   }
 };
 
@@ -507,10 +495,7 @@ exports.getMyResult = async (req, res) => {
     const w = computeWindow(test);
     if (!w.isCompleted) return res.json({ available: false });
 
-    const sub = await Submission.findOne({
-      testId: req.params.id,
-      userId: uid,
-    }).lean();
+    const sub = await Submission.findOne({ testId: req.params.id, userId: uid }).lean();
     if (!sub) return res.json({ available: false });
 
     const key = test.answerKey || {};
@@ -518,24 +503,36 @@ exports.getMyResult = async (req, res) => {
     const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
     const zeroIndexed = keys.includes("0");
 
+    const MARK_CORRECT = 2;        // UPSC GS
+    const MARK_WRONG   = -2 / 3;   // UPSC GS
+
     let score = 0;
     let attempted = 0;
     const details = keys.map((q) => {
       const correct = String(key[q]).toUpperCase();
-      const marked = answers[q]
-        ? String(answers[q]).toUpperCase()
-        : null;
-      const isCorrect = !!marked && marked === correct;
-      if (marked) attempted++;
-      if (isCorrect) score++;
+      const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
+      let isCorrect = false;
+
+      if (marked) {
+        attempted++;
+        if (marked === correct) {
+          isCorrect = true;
+          score += MARK_CORRECT;
+        } else {
+          score += MARK_WRONG;
+        }
+      }
+
       const displayQ = zeroIndexed ? Number(q) + 1 : Number(q);
       return { q: displayQ, marked, correct, isCorrect };
     });
 
+    const totalMarks = keys.length * MARK_CORRECT;
+
     res.json({
       available: true,
-      score,
-      total: keys.length,
+      score: Number(score.toFixed(3)),
+      total: totalMarks,
       attempted,
       submittedAt: sub.submittedAt || null,
       details,

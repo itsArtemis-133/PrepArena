@@ -26,7 +26,9 @@ const SIMPLE_KEYS = [
   "isCreator",
   "syllabus",
   "registrationCount",
-  "answersPdfUrl", // include answers PDF
+  "answersPdfUrl", // (legacy) still merged if server sends it
+  "answersPdfFilename", // prefer filename when present
+  "pdfFilename",        // prefer filename when present
 ];
 
 const isEmpty = (k, v) => {
@@ -57,7 +59,6 @@ function mergeTest(prev = {}, next = {}, debugRows = []) {
   const chosenCreatedBy = {
     _id: prefer("_id", a?._id, b?._id),
     username: prefer("username", a?.username, b?.username),
-    // keep creator reputation if present
     creatorRatingAvg: prefer("creatorRatingAvg", a?.creatorRatingAvg, b?.creatorRatingAvg),
     creatorRatingCount: prefer("creatorRatingCount", a?.creatorRatingCount, b?.creatorRatingCount),
   };
@@ -255,6 +256,32 @@ export default function TestBridge() {
       if (err?.response?.status === 401) navigate(`/login?next=/test/${link}`);
       else alert(msg);
     }
+  };
+
+  // Secure download helpers
+  async function downloadFromRoute(routePath, filenameFallback = "file.pdf") {
+    try {
+      const res = await axios.get(routePath, { responseType: "blob" });
+      const blobUrl = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filenameFallback;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch  {
+      alert("Download failed. Please try again.");
+    }
+  }
+  const downloadQuestionPdf = () => {
+    const fname = `${fmt(test.title)} - Question Paper.pdf`;
+    downloadFromRoute(`/test/${test._id}/pdf`, fname);
+  };
+  const downloadAnswersPdf = () => {
+    const fname = `${fmt(test.title)} - Official Answers.pdf`;
+    // backend route expected: GET /api/test/:id/answers-pdf (auth-protected)
+    downloadFromRoute(`/test/${test._id}/answers-pdf`, fname);
   };
 
   // ---------- skeleton / not found ----------
@@ -564,22 +591,10 @@ export default function TestBridge() {
                   )}
                 </div>
 
-                {/* Official Answers */}
+                {/* Official Answers (answer-key grid stays). If you previously embedded answers PDF via iframe,
+                    keep it out now since the route is protected; use the Downloads box on the right for PDFs. */}
                 <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-sm p-6">
                   <div className="text-lg font-semibold mb-2 text-slate-900 dark:text-slate-100">Official Answers</div>
-
-                  {/* Embed Official Answers PDF first, if present */}
-                  {test.answersPdfUrl && (
-                    <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 dark:border-gray-800">
-                      <iframe
-                        title="Official Answers PDF"
-                        src={`${test.answersPdfUrl}#toolbar=1&navpanes=0`}
-                        className="w-full h-[480px]"
-                      />
-                    </div>
-                  )}
-
-                  {/* Then the answer-key grid */}
                   {solution.loading ? (
                     <div className="h-12 rounded-xl bg-slate-100 dark:bg-gray-800 animate-pulse" />
                   ) : !solution.available ? (
@@ -592,7 +607,7 @@ export default function TestBridge() {
             )}
           </div>
 
-          {/* Right: Sticky action card */}
+          {/* Right: Sticky action card + Downloads box */}
           <div className="lg:col-span-4">
             <div className="lg:sticky lg:top-6">
               <div className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow-lg p-5">
@@ -632,7 +647,7 @@ export default function TestBridge() {
                     link={link}
                     test={test}
                     registerAndMaybeEnter={registerAndMaybeEnter}
-                    unregisterNow={unregisterNow} // ✅ new
+                    unregisterNow={unregisterNow}
                   />
                 </div>
 
@@ -642,6 +657,37 @@ export default function TestBridge() {
                   </div>
                 )}
               </div>
+
+              {/* New: Downloads box appears below the action card when completed */}
+              {isOver && (
+                <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow p-4">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                    Downloads
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mb-3">
+                    Download the original PDFs for review.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadQuestionPdf}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      Download Question Paper (PDF)
+                    </button>
+
+                    {(Boolean(test.answersPdfFilename) || Boolean(test.answersPdfUrl)) && (
+                      <button
+                        type="button"
+                        onClick={downloadAnswersPdf}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                      >
+                        Download Official Answers (PDF)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {(test.isPublic || test.isCreator) && (
                 <div className="mt-4 rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 shadow p-4">
@@ -754,7 +800,7 @@ function ActionButton({
   navigate,
   test,
   registerAndMaybeEnter,
-  unregisterNow, // ✅ added
+  unregisterNow,
 }) {
   if (regLoading) {
     return (
@@ -1049,7 +1095,7 @@ function FeedbackBox({ testId }) {
                 <button
                   key={n}
                   type="button"
-                  onClick={() => setRating((prev) => (prev === n ? 0 : n))} // toggle on same star
+                  onClick={() => setRating((prev) => (prev === n ? 0 : n))}
                   aria-label={`Rate ${n} star${n > 1 ? "s" : ""}`}
                   aria-pressed={active}
                   className={`w-9 h-9 rounded-full border text-lg leading-9 text-center ${
