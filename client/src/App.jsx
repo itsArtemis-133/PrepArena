@@ -10,8 +10,6 @@ import Dashboard     from "./pages/Dashboard";
 import TestsCreation from "./pages/TestsCreation";
 import TestBridge    from "./pages/TestBridge";
 import TestRunner    from "./pages/TestRunner";
-
-// NEW
 import TestsHub      from "./pages/TestsHub";
 import Result        from "./pages/Result";
 
@@ -34,7 +32,6 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/tests/create" element={<TestsCreation />} />
           <Route path="/tests/:link/take" element={<TestRunner />} />
-
           {/* Optional: Results page (completed tests from scope=all) */}
           <Route path="/results" element={<Result />} />
         </Route>
