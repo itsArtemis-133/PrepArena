@@ -1,0 +1,62 @@
+# render.yaml — PrepArena deployment (API + Extractor)
+services:
+  - type: web
+    name: preparena-api
+    env: node
+    rootDir: server
+    plan: starter
+    buildCommand: "npm ci && npm run render-build"
+    startCommand: "npm start"
+    autoDeploy: true
+    healthCheckPath: "/api/health"
+    disk:
+      name: uploads-disk
+      mountPath: /data/uploads
+      sizeGB: 10
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Use your current name (you’re using MONGO_URI)
+      - key: MONGO_URI
+        sync: false
+      # For compatibility, also expose MONGODB_URI = MONGO_URI
+      - key: MONGODB_URI
+        fromService:
+          type: env
+          name: preparena-api
+          envVarKey: MONGO_URI
+      - key: JWT_SECRET
+        sync: false
+      - key: UPLOAD_DIR
+        value: /data/uploads
+      - key: CORS_ORIGINS
+        value: "https://preparena.vercel.app,https://*.vercel.app,https://preparena.in"
+      # Fill these AFTER extractor URL is known
+      - key: EXTRACTOR_URL
+        value: https://preparena-extractor.onrender.com
+        sync: false
+      - key: EXTRACTOR_AUTH_TOKEN
+        value: dev-extractor-token
+        sync: false
+
+  - type: web
+    name: preparena-extractor
+    env: python
+    rootDir: .
+    plan: starter
+    buildCommand: "pip install -r scripts/requirements.txt"
+    startCommand: "gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT scripts.extractor_wsgi:app"
+    autoDeploy: true
+    healthCheckPath: "/healthz"
+    disk:
+      name: extractor-work
+      mountPath: /data
+      sizeGB: 2
+    envVars:
+      - key: WORK_DIR
+        value: /data/work
+      - key: MAX_CONTENT_LENGTH_MB
+        value: "20"
+      # Optional if you later secure the extractor:
+      - key: AUTH_TOKEN
+        sync: false
