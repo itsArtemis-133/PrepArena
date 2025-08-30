@@ -16,28 +16,22 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Use your current name (you’re using MONGO_URI)
+      # Use the var name your code already supports
       - key: MONGO_URI
-        sync: false
-      # For compatibility, also expose MONGODB_URI = MONGO_URI
+        value: ""          # <-- fill in on Render after first deploy (or commit it if you must)
+      # Optional redundancy; your code already reads both names
       - key: MONGODB_URI
-        fromService:
-          type: env
-          name: preparena-api
-          envVarKey: MONGO_URI
+        value: ""          # can leave empty or same value as MONGO_URI
       - key: JWT_SECRET
-        sync: false
+        value: ""          # set on Render
       - key: UPLOAD_DIR
         value: /data/uploads
       - key: CORS_ORIGINS
         value: "https://preparena.vercel.app,https://*.vercel.app,https://preparena.in"
-      # Fill these AFTER extractor URL is known
       - key: EXTRACTOR_URL
-        value: https://preparena-extractor.onrender.com
-        sync: false
+        value: "https://preparena-extractor.onrender.com"  # replace with your extractor URL
       - key: EXTRACTOR_AUTH_TOKEN
-        value: dev-extractor-token
-        sync: false
+        value: "dev-extractor-token"                       # set/empty to match extractor
 
   - type: web
     name: preparena-extractor
@@ -57,6 +51,5 @@ services:
         value: /data/work
       - key: MAX_CONTENT_LENGTH_MB
         value: "20"
-      # Optional if you later secure the extractor:
       - key: AUTH_TOKEN
-        sync: false
+        value: "dev-extractor-token"   # or "" if you don't want auth
