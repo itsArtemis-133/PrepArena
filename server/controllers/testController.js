@@ -105,6 +105,10 @@ exports.createTest = async (req, res, next) => {
       answerKey,
     } = req.body;
 
+    // ✅ Map filenames (storedName) -> existing url fields (back-compat friendly)
+    const pdfFilename = req.body?.pdfFilename || "";
+    const answersPdfFilename = req.body?.answersPdfFilename || "";
+
     const userId = req.user?.id || null;
 
     const doc = await Test.create({
@@ -118,12 +122,15 @@ exports.createTest = async (req, res, next) => {
       duration: n(duration),
       questionCount: n(questionCount),
       isPublic: !!isPublic,
-      pdfUrl: pdfUrl || "",
-      answersPdfUrl: answersPdfUrl || "",
+
+      // Store the storedName in these existing fields (your streamers already handle it)
+      pdfUrl: pdfFilename || pdfUrl || "",
+      answersPdfUrl: answersPdfFilename || answersPdfUrl || "",
+
       answerKey: answerKey || {},
       link: uuidv4(),
       createdBy: userId,
-      registrations: [], // ✅ Plan B: creator NOT auto-registered
+      registrations: [], // creator NOT auto-registered
       status: "Scheduled",
     });
 
@@ -147,6 +154,14 @@ exports.updateTest = async (req, res) => {
     const w = computeWindow(test);
     if (!w.isUpcoming) {
       return res.status(400).json({ message: "Cannot modify after start" });
+    }
+
+    // ✅ Accept filenames and map to existing fields if provided
+    if (req.body?.pdfFilename && !req.body.pdfUrl) {
+      req.body.pdfUrl = req.body.pdfFilename;
+    }
+    if (req.body?.answersPdfFilename && !req.body.answersPdfUrl) {
+      req.body.answersPdfUrl = req.body.answersPdfFilename;
     }
 
     const allowed = [
@@ -300,16 +315,20 @@ exports.unregisterForTest = async (req, res) => {
 
     const w = computeWindow(test);
 
-    // ✅ New rule: block only if live or completed (unscheduled is allowed)
+    // Block only if live or completed (unscheduled is allowed)
     if (w.isLive || w.isCompleted) {
-      return res.status(400).json({ message: "Cannot unregister during or after the test" });
+      return res
+        .status(400)
+        .json({ message: "Cannot unregister during or after the test" });
     }
 
     if (!Array.isArray(test.registrations)) test.registrations = [];
     const before = test.registrations.length;
 
     // Remove user if present (idempotent)
-    test.registrations = test.registrations.filter((id) => String(id) !== String(uid));
+    test.registrations = test.registrations.filter(
+      (id) => String(id) !== String(uid)
+    );
     if (test.registrations.length !== before) {
       await test.save();
     }
@@ -323,7 +342,6 @@ exports.unregisterForTest = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // POST /api/test/:id/submit
 exports.submitAnswers = async (req, res) => {
@@ -364,46 +382,47 @@ exports.getLeaderboard = async (req, res) => {
     const key = test.answerKey || {};
     const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
     const totalQuestions = keys.length;
-    const MARK_CORRECT = 2;            // UPSC GS: +2
-    const MARK_WRONG   = -2 / 3;       // UPSC GS: -0.666...
+    const MARK_CORRECT = 2; // UPSC GS: +2
+    const MARK_WRONG = -2 / 3; // UPSC GS: -0.666...
 
     const subs = await Submission.find({ testId: req.params.id })
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs.map((s) => {
-      const answers = s.answers || {};
-      let score = 0;
-      let attempted = 0;
+    const scored = subs
+      .map((s) => {
+        const answers = s.answers || {};
+        let score = 0;
+        let attempted = 0;
 
-      for (const q of keys) {
-        const correct = String(key[q]).toUpperCase();
-        const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
-        if (marked) {
-          attempted++;
-          if (marked === correct) score += MARK_CORRECT;
-          else score += MARK_WRONG;
+        for (const q of keys) {
+          const correct = String(key[q]).toUpperCase();
+          const marked = answers[q] ? String(answers[q]).toUpperCase() : null;
+          if (marked) {
+            attempted++;
+            if (marked === correct) score += MARK_CORRECT;
+            else score += MARK_WRONG;
+          }
         }
-      }
 
-      return {
-        _id: s._id,
-        user: {
-          _id: s.userId?._id,
-          name: s.userId?.name || s.userId?.username || "—",
-        },
-        score: Number(score.toFixed(3)),
-        total: totalQuestions * MARK_CORRECT,   // total possible marks
-        attempted,
-        submittedAt: s.submittedAt,
-      };
-    })
-    // Higher score first; tie-breaker: earlier submission wins
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        new Date(a.submittedAt) - new Date(b.submittedAt)
-    );
+        return {
+          _id: s._id,
+          user: {
+            _id: s.userId?._id,
+            name: s.userId?.name || s.userId?.username || "—",
+          },
+          score: Number(score.toFixed(3)),
+          total: totalQuestions * MARK_CORRECT, // total possible marks
+          attempted,
+          submittedAt: s.submittedAt,
+        };
+      })
+      // Higher score first; tie-breaker: earlier submission wins
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          new Date(a.submittedAt) - new Date(b.submittedAt)
+      );
 
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
@@ -416,13 +435,15 @@ exports.getLeaderboard = async (req, res) => {
   }
 };
 
-
 // GET /api/test/:id/leaderboard.csv
 exports.getLeaderboardCsv = async (req, res) => {
   try {
     if (!Submission) {
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename=leaderboard.csv"
+      );
       return res.send("rank,user,score,total,attempted,submittedAt\n");
     }
 
@@ -432,49 +453,57 @@ exports.getLeaderboardCsv = async (req, res) => {
     const key = test.answerKey || {};
     const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
     const totalQuestions = keys.length;
-    const MARK_CORRECT = 2;          // UPSC GS
-    const MARK_WRONG   = -2 / 3;     // UPSC GS
+    const MARK_CORRECT = 2; // UPSC GS
+    const MARK_WRONG = -2 / 3; // UPSC GS
 
     const subs = await Submission.find({ testId: req.params.id })
       .populate("userId", "name username")
       .lean();
 
-    const scored = subs.map((s) => {
-      const answers = s.answers || {};
-      let score = 0;
-      let attempted = 0;
+    const scored = subs
+      .map((s) => {
+        const answers = s.answers || {};
+        let score = 0;
+        let attempted = 0;
 
-      for (const q of keys) {
-        const correct = String(key[q]).toUpperCase();
-        const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
-        if (marked) {
-          attempted++;
-          if (marked === correct) score += MARK_CORRECT;
-          else score += MARK_WRONG;
+        for (const q of keys) {
+          const correct = String(key[q]).toUpperCase();
+          const marked = answers[q] ? String(answers[q]).toUpperCase() : null;
+          if (marked) {
+            attempted++;
+            if (marked === correct) score += MARK_CORRECT;
+            else score += MARK_WRONG;
+          }
         }
-      }
 
-      return {
-        user: s.userId?.name || s.userId?.username || "—",
-        score: Number(score.toFixed(3)),
-        total: totalQuestions * MARK_CORRECT,
-        attempted,
-        submittedAt: s.submittedAt ? new Date(s.submittedAt).toISOString() : "",
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        new Date(a.submittedAt) - new Date(b.submittedAt)
-    );
+        return {
+          user: s.userId?.name || s.userId?.username || "—",
+          score: Number(score.toFixed(3)),
+          total: totalQuestions * MARK_CORRECT,
+          attempted,
+          submittedAt: s.submittedAt
+            ? new Date(s.submittedAt).toISOString()
+            : "",
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          new Date(a.submittedAt) - new Date(b.submittedAt)
+      );
 
     let csv = "rank,user,score,total,attempted,submittedAt\n";
     scored.forEach((row, idx) => {
-      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${row.score},${row.total},${row.attempted},${row.submittedAt}\n`;
+      csv += `${idx + 1},"${String(row.user).replace(/"/g, '""')}",${
+        row.score
+      },${row.total},${row.attempted},${row.submittedAt}\n`;
     });
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=leaderboard.csv");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment: filename=leaderboard.csv"
+    );
     res.send(csv);
   } catch (err) {
     res.status(500).json({ message: "Server error" });
@@ -495,7 +524,10 @@ exports.getMyResult = async (req, res) => {
     const w = computeWindow(test);
     if (!w.isCompleted) return res.json({ available: false });
 
-    const sub = await Submission.findOne({ testId: req.params.id, userId: uid }).lean();
+    const sub = await Submission.findOne({
+      testId: req.params.id,
+      userId: uid,
+    }).lean();
     if (!sub) return res.json({ available: false });
 
     const key = test.answerKey || {};
@@ -503,14 +535,14 @@ exports.getMyResult = async (req, res) => {
     const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
     const zeroIndexed = keys.includes("0");
 
-    const MARK_CORRECT = 2;        // UPSC GS
-    const MARK_WRONG   = -2 / 3;   // UPSC GS
+    const MARK_CORRECT = 2; // UPSC GS
+    const MARK_WRONG = -2 / 3; // UPSC GS
 
     let score = 0;
     let attempted = 0;
     const details = keys.map((q) => {
       const correct = String(key[q]).toUpperCase();
-      const marked  = answers[q] ? String(answers[q]).toUpperCase() : null;
+      const marked = answers[q] ? String(answers[q]).toUpperCase() : null;
       let isCorrect = false;
 
       if (marked) {

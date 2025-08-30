@@ -1,7 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import axios from "../api/axiosConfig";
 import { useDropzone } from "react-dropzone";
-import { DocumentCheckIcon, ExclamationCircleIcon, ArrowPathIcon, CloudArrowUpIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import {
+  DocumentCheckIcon,
+  ExclamationCircleIcon,
+  ArrowPathIcon,
+  CloudArrowUpIcon,
+  XMarkIcon,
+} from "@heroicons/react/24/outline";
 
 export default function PDFUpload({
   label,
@@ -20,46 +26,50 @@ export default function PDFUpload({
     setUploadedUrl(existingUrl);
   }, [existingFile, existingUrl]);
 
-  const onDrop = useCallback((acceptedFiles) => {
-    if (acceptedFiles.length > 0) {
-      const selectedFile = acceptedFiles[0];
-      setFile(selectedFile);
-      setProgress(0);
-      setUploadedUrl("");
-      setError("");
-      uploadFile(selectedFile);
-    }
-  }, []);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'application/pdf': ['.pdf'] },
-    multiple: false,
-  });
-
-  const uploadFile = async (fileToUpload) => {
-    if (!fileToUpload) return;
-    setUploading(true);
+  const onDrop = useCallback(async (acceptedFiles) => {
+    const fileToUpload = acceptedFiles?.[0];
     setError("");
+
+    if (!fileToUpload) return;
+    if (fileToUpload.type !== "application/pdf" && !fileToUpload.name.toLowerCase().endsWith(".pdf")) {
+      setError("Only PDF files are allowed");
+      return;
+    }
+
+    setFile(fileToUpload);
+    setUploading(true);
+    setProgress(0);
+
     const formData = new FormData();
     formData.append("file", fileToUpload);
 
     try {
-      const res = await axios.post("/upload", formData, {
+      // 🔁 Use your actual upload route & shape
+      const res = await axios.post("/upload/file", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (ev) => {
           setProgress(Math.round((ev.loaded * 100) / ev.total));
         },
       });
-      setUploadedUrl(res.data.url);
-      if (onUpload) onUpload(fileToUpload, res.data.url);
+
+      // { ok: true, file: { storedName, size, mimeType } }
+      const storedName = res?.data?.file?.storedName || "";
+      setUploadedUrl(storedName);
+      if (onUpload) onUpload(fileToUpload, storedName);
     } catch {
       setError("Upload failed. Please try again.");
       setProgress(0);
     } finally {
       setUploading(false);
     }
-  };
+  }, [onUpload]);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    multiple: false,
+    accept: { "application/pdf": [".pdf"] },
+    maxFiles: 1,
+  });
 
   const handleRemove = () => {
     setFile(null);
@@ -70,47 +80,50 @@ export default function PDFUpload({
   };
 
   return (
-    <div className="space-y-3">
-      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">{label}</label>
-      
-      {uploadedUrl ? (
-        <div className="flex items-center gap-3 p-3 text-green-800 dark:text-green-300 bg-green-50 dark:bg-green-900/50 rounded-lg border border-green-200 dark:border-green-800">
-          <DocumentCheckIcon className="h-6 w-6 text-green-600 flex-shrink-0" />
-          <div className="flex-grow">
-            <a href={uploadedUrl} target="_blank" rel="noopener noreferrer" className="font-semibold hover:underline">
-              View Uploaded PDF
-            </a>
-            <p className="text-xs">{file?.name}</p>
+    <div className="w-full">
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-xl p-6 cursor-pointer transition
+          ${isDragActive ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30" : "border-gray-300 dark:border-gray-700"}
+        `}
+      >
+        <input {...getInputProps()} />
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center">
+            <CloudArrowUpIcon className="h-6 w-6 text-indigo-600 dark:text-indigo-300" />
           </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {label || "Upload PDF"}
+            </p>
+            <p className="text-xs text-gray-500">
+              {isDragActive ? "Drop the file here..." : "Drag & drop a PDF or click to select"}
+            </p>
+          </div>
+          {uploading ? (
+            <ArrowPathIcon className="h-5 w-5 animate-spin text-indigo-600" />
+          ) : uploadedUrl ? (
+            <DocumentCheckIcon className="h-5 w-5 text-emerald-600" />
+          ) : null}
+        </div>
+      </div>
+
+      {file && (
+        <div className="mt-2 flex items-center justify-between text-sm">
+          <div className="truncate text-gray-700 dark:text-gray-200">{file.name}</div>
           <button
             type="button"
             onClick={handleRemove}
-            className="flex items-center text-sm text-red-600 hover:underline"
+            className="flex items-center gap-1 text-red-600 hover:text-red-700"
           >
-            <ArrowPathIcon className="h-4 w-4 mr-1" />
-            Replace
+            <XMarkIcon className="h-4 w-4" />
+            Remove
           </button>
-        </div>
-      ) : (
-        <div {...getRootProps()} className={`relative group p-6 border-2 border-dashed rounded-lg cursor-pointer text-center transition-colors duration-200 ${isDragActive ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/50' : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'}`}>
-          <input {...getInputProps()} />
-          <div className="flex flex-col items-center justify-center space-y-2">
-            <CloudArrowUpIcon className="h-10 w-10 text-gray-400 group-hover:text-indigo-500" />
-            {uploading ? (
-              <p className="text-sm text-gray-600 dark:text-gray-300">Uploading...</p>
-            ) : isDragActive ? (
-              <p className="text-sm font-semibold text-indigo-600">Drop the file here...</p>
-            ) : (
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                <span className="font-semibold text-indigo-600">Click to upload</span> or drag and drop a PDF
-              </p>
-            )}
-          </div>
         </div>
       )}
 
       {uploading && !uploadedUrl && (
-        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+        <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
           <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${progress}%` }}></div>
         </div>
       )}

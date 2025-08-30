@@ -1,5 +1,5 @@
 // client/src/pages/TestsCreation.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react"; // Import useRef
 import { useNavigate } from "react-router-dom";
 import axios from "../api/axiosConfig";
 
@@ -18,6 +18,8 @@ import {
   WrenchScrewdriverIcon,
   EyeIcon,
   RocketLaunchIcon,
+  XMarkIcon, // New Icon
+  DocumentArrowUpIcon, // New Icon
 } from "@heroicons/react/24/outline";
 
 const Steps = [
@@ -102,6 +104,10 @@ export default function TestsCreation() {
   const [publishing, setPublishing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  
+  // --- NEW --- State and refs for the improved uploader UI
+  const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const isStepValid = () => {
     if (step === 0) return !!(questionPdfFile || questionPdfUrl || questionPdfFilename);
@@ -177,19 +183,19 @@ export default function TestsCreation() {
   };
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
-  // NEW: uploads return filenames (secured backend)
+  // ✅ uploads return filenames (secured backend)
   const uploadPdfAndGetFilename = async (file) => {
     if (!file) return "";
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
     try {
-      // backend route is /api/upload/pdf; axios base already adds /api
-      const res = await axios.post("/upload/pdf", formData, {
+      // ✅ USE THE REAL ROUTE + SHAPE
+      const res = await axios.post("/upload/file", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // { message: 'Uploaded', filename: '12345.pdf' }
-      return res?.data?.filename || "";
+      // { ok: true, file: { storedName: '...' } }
+      return res?.data?.file?.storedName || "";
     } catch {
       return "";
     } finally {
@@ -266,6 +272,44 @@ export default function TestsCreation() {
         {errors[name]}
       </div>
     );
+    
+  // --- NEW --- Handlers for the improved uploader
+  const handleFileSelect = (selectedFile) => {
+    if (selectedFile && selectedFile.type === "application/pdf") {
+      setQuestionPdfFile(selectedFile);
+      setQuestionPdfUrl(selectedFile.name); // Use real filename for UI
+      setQuestionPdfFilename(""); // This will be set on final submit
+    } else {
+      // Optional: handle wrong file type
+      setErrors({ pdfUrl: "Please select a valid PDF file." });
+    }
+  };
+  
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files[0]);
+    }
+  };
 
   const PreviewCard = () => (
     <div className="bg-white dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700/50 p-6 rounded-2xl shadow-sm space-y-6">
@@ -372,18 +416,70 @@ export default function TestsCreation() {
           ))}
         </div>
 
-        <div className="min-h-[400px]">
+        <div className="min-h[400px]">
           {step === 0 && (
             <StepWrapper title="Step 1: Upload Question Paper" icon={CloudArrowUpIcon}>
-              <PDFUpload
-                label="Upload Questions PDF"
-                onUpload={(file, url) => {
-                  setQuestionPdfFile(file);
-                  setQuestionPdfUrl(url);
-                }}
-                existingFile={questionPdfFile}
-                existingUrl={questionPdfUrl}
-              />
+              {/* --- NEW UPLOADER UI STARTS HERE --- */}
+              <div>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  ref={fileInputRef}
+                  onChange={(e) => handleFileSelect(e.target.files[0])}
+                  className="hidden"
+                />
+
+                {!questionPdfFile ? (
+                  <div
+                    onClick={() => fileInputRef.current.click()}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    className={`
+                      flex flex-col items-center justify-center p-12
+                      border-2 border-dashed rounded-xl 
+                      text-center cursor-pointer transition-all duration-200
+                      ${isDragging 
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' 
+                        : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      }
+                    `}
+                  >
+                    <DocumentArrowUpIcon className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+                    <p className="mt-4 font-semibold text-gray-700 dark:text-gray-300">
+                      Drag & drop your PDF here
+                    </p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      or <span className="text-indigo-600 dark:text-indigo-400 font-medium">click to browse</span>
+                    </p>
+                    <p className="mt-3 text-xs text-gray-400">PDF only, max 10MB</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <DocumentCheckIcon className="h-7 w-7 text-green-500 flex-shrink-0" />
+                      <div>
+                        <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">{questionPdfUrl}</p>
+                        <p className="text-sm text-gray-500">
+                          {(questionPdfFile.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setQuestionPdfFile(null);
+                        setQuestionPdfUrl("");
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                      className="p-2 rounded-full text-gray-500 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/50 dark:hover:text-red-400 transition-colors"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* --- NEW UPLOADER UI ENDS HERE --- */}
               <ErrorMessage name="pdfUrl" />
             </StepWrapper>
           )}
@@ -418,9 +514,10 @@ export default function TestsCreation() {
                 <div className="pt-6 border-t border-gray-200 dark:border-gray-700/50">
                   <PDFUpload
                     label="Official Answers PDF (Optional)"
-                    onUpload={(file, url) => {
+                    onUpload={(file, storedName) => {
                       setAnswersPdfFile(file);
-                      setAnswersPdfUrl(url);
+                      setAnswersPdfUrl(storedName);
+                      setAnswersPdfFilename(storedName);
                     }}
                     existingFile={answersPdfFile}
                     existingUrl={answersPdfUrl}

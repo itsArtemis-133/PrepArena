@@ -5,7 +5,15 @@ const router = express.Router();
 const multer = require("multer");
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB for in-memory extractor proxy
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB for in-memory extractor proxy
+  fileFilter: (_req, file, cb) => {
+    const ok =
+     file.mimetype === "application/pdf" ||
+    (typeof file.originalname === "string" &&
+       file.originalname.toLowerCase().endsWith(".pdf"));
+  if (!ok) return cb(new Error("Only PDF files are allowed"));
+    cb(null, true);
+  },
 });
 
 const axios = require("axios");
