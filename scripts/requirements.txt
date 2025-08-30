@@ -1,0 +1,7 @@
+Flask==3.0.3
+gunicorn==22.0.0
+pdfplumber==0.11.4
+# pdfplumber depends on Pillow and pdfminer.six; it will pull them in automatically.
+# If you hit build issues, you can pin explicitly:
+# Pillow==10.4.0
+# pdfminer.six==20240706
