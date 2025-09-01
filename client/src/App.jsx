@@ -12,6 +12,7 @@ import TestBridge    from "./pages/TestBridge";
 import TestRunner    from "./pages/TestRunner";
 import TestsHub      from "./pages/TestsHub";
 import Result        from "./pages/Result";
+import Profile       from "./pages/Profile";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
           <Route path="/tests/:link/take" element={<TestRunner />} />
           {/* Optional: Results page (completed tests from scope=all) */}
           <Route path="/results" element={<Result />} />
+          <Route path="/profile" element={<Profile />} />
         </Route>
       </Route>
 

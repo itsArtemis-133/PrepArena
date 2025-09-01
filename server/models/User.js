@@ -13,6 +13,18 @@ const UserSchema = new Schema(
     creatorRatingCount: { type: Number, default: 0 },  // number of ratings received
     // -------------------------------------------------------
     // ... any other fields you already keep (roles, phone, etc.)
+
+    // --- Profile fields ---
+    avatar: { type: String, default: "" }, // stores filename or URL
+    gender: { type: String, default: "" },
+    location: { type: String, default: "" },
+    birthday: { type: String, default: "" },
+    summary: { type: String, default: "" },
+    website: { type: String, default: "" },
+    github: { type: String, default: "" },
+    linkedin: { type: String, default: "" },
+    twitter: { type: String, default: "" },
+    // --- End profile fields ---
   },
   { timestamps: true }
 );

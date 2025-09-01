@@ -1,11 +1,6 @@
 // client/src/api/axiosConfig.jsx
 import axios from "axios";
 
-/**
- * Resolve API base:
- * - Proxy mode (recommended on Vercel): if no env is set, use "/api" so vercel.json rewrites to backend.
- * - Direct mode (optional): if VITE_API_BASE_URL/VITE_API_BASE is set, normalize and ensure it ends with "/api".
- */
 function resolveApiBase() {
   const raw =
     (import.meta?.env?.VITE_API_BASE_URL ??
@@ -14,18 +9,25 @@ function resolveApiBase() {
       .toString()
       .trim();
 
-  // No env → Proxy mode via vercel.json
+  // No env → Proxy mode (/api) — works locally via Vite proxy and (optionally) on Vercel via rewrites
   if (!raw) return "/api";
 
-  // Env present → Direct mode
-  const trimmed = raw.replace(/\/+$/, ""); // strip trailing slashes
-  return trimmed.toLowerCase().endsWith("/api") ? trimmed : `${trimmed}/api`;
+  // Env present → Direct mode (Cloud Run URL or your own API domain)
+  const trimmed = raw.replace(/\/+$/, ""); // strip trailing slashes only
+  return trimmed.endsWith("/api") ? trimmed : `${trimmed}/api`;
+}
+
+const baseURL = resolveApiBase();
+
+// Optional: small dev log to surface misconfig fast
+if (import.meta.env.DEV) {
+  
+  console.log(`[axios] baseURL = ${baseURL}`);
 }
 
 const api = axios.create({
-  baseURL: resolveApiBase(),
-  // You can add a short timeout to surface misconfig early (optional):
-  // timeout: 15000,
+  baseURL,
+  // timeout: 15000, // uncomment if you want to fail fast on misconfig
 });
 
 // Attach auth token automatically
@@ -38,5 +40,15 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Optional: normalize API errors
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    // You can handle 401 here (e.g., logout/redirect) if you want
+    // if (err?.response?.status === 401) { ... }
+    return Promise.reject(err);
+  }
+);
 
 export default api;
