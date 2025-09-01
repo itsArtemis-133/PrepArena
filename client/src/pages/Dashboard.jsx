@@ -11,7 +11,11 @@ import {
   MagnifyingGlassIcon,
   InboxIcon,
 } from "@heroicons/react/24/outline";
-import avatar from "../assets/avatar.svg"; // Default avatar
+
+import avatarDefault from "../assets/avatar.svg";
+import { useMyAvatar } from "../hooks/useMyAvatar";
+
+
 
 // Time window helper (unchanged)
 const computeWindow = (t) => {
@@ -64,6 +68,7 @@ const EmptyState = ({ message, icon }) => (
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(true);
+  const { url: myAvatarUrl } = useMyAvatar();
 
   // Two pools: tests I'm registered for, and all tests I created or registered for
   const [registered, setRegistered] = React.useState([]);
@@ -302,10 +307,12 @@ export default function Dashboard() {
           <section className="rounded-2xl border bg-white dark:bg-gray-900 dark:border-gray-800 p-6">
             <div className="flex items-center gap-4">
               <img
-                src={avatar}
+                src={myAvatarUrl || avatarDefault}
                 alt="User Avatar"
                 className="h-16 w-16 rounded-full object-cover bg-gray-200 dark:bg-gray-700"
               />
+
+              
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                   Your Profile
