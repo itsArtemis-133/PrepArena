@@ -1,4 +1,4 @@
-Flask==3.0.3
+Flask==3.1.2
 gunicorn==22.0.0
 pdfplumber==0.11.4
 # pdfplumber depends on Pillow and pdfminer.six; it will pull them in automatically.

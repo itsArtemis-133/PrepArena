@@ -119,10 +119,6 @@ def extract():
             os.remove(temp_path)
 
 
-@app.get("/healthz")
-def healthz():
-    return {"ok": True}
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001))  # Railway gives $PORT
