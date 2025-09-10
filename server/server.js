@@ -96,13 +96,21 @@ app.use(express.json({ limit: "10mb" }));
 
 /* ---------- Rate limiting (API-wide, optional) ---------- */
 if (rateLimit) {
+  const isProd = process.env.NODE_ENV === "production";
+
+  // Very relaxed in dev
+  const maxRequests = isProd
+    ? Number(process.env.SUBMIT_RATE_PER_MIN || 600)
+    : 10000;
+
   app.use(
     "/api",
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: Number(process.env.SUBMIT_RATE_PER_MIN || 600), // tune as needed
+      max: maxRequests,
       standardHeaders: true,
       legacyHeaders: false,
+      message: "Too many requests, please try again later.",
     })
   );
 } else {
