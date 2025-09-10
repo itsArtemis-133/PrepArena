@@ -96,4 +96,5 @@ def extract():
             os.remove(temp_path)
 
 if __name__ == '__main__':
-    app.run(port=8001, debug=True)
+    port = int(os.environ.get("PORT", 8001))  # default 8001 locally
+    app.run(host="0.0.0.0", port=port, debug=True)
