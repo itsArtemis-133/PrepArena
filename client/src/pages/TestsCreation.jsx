@@ -183,19 +183,19 @@ export default function TestsCreation() {
   };
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
-  // ✅ uploads return filenames (secured backend)
-  const uploadPdfAndGetFilename = async (file) => {
+  // uploads return filenames (secured backend) or S3 keys
+  const uploadPdfAndGetUrl = async (file) => {
     if (!file) return "";
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
     try {
-      // ✅ USE THE REAL ROUTE + SHAPE
-      const res = await axios.post("/upload/file", formData, {
+      // Use the new upload endpoint
+      const res = await axios.post("/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // { ok: true, file: { storedName: '...' } }
-      return res?.data?.file?.storedName || "";
+      // Return the URL/key for storage in database
+      return res?.data?.url || "";
     } catch {
       return "";
     } finally {
@@ -210,7 +210,7 @@ export default function TestsCreation() {
       // Upload question paper if a file is provided and no filename yet
       let qFilename = questionPdfFilename;
       if (!qFilename && questionPdfFile) {
-        qFilename = await uploadPdfAndGetFilename(questionPdfFile);
+        qFilename = await uploadPdfAndGetUrl(questionPdfFile);
         setQuestionPdfFilename(qFilename);
       }
       if (!qFilename) {
@@ -222,7 +222,7 @@ export default function TestsCreation() {
       // Upload official answers PDF (optional)
       let aFilename = answersPdfFilename;
       if (!aFilename && answersPdfFile) {
-        aFilename = await uploadPdfAndGetFilename(answersPdfFile);
+        aFilename = await uploadPdfAndGetUrl(answersPdfFile);
         setAnswersPdfFilename(aFilename);
       }
 

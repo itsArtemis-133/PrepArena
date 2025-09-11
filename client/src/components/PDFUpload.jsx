@@ -44,18 +44,18 @@ export default function PDFUpload({
     formData.append("file", fileToUpload);
 
     try {
-      // 🔁 Use your actual upload route & shape
-      const res = await axios.post("/upload/file", formData, {
+      // Use the new upload endpoint
+      const res = await axios.post("/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (ev) => {
           setProgress(Math.round((ev.loaded * 100) / ev.total));
         },
       });
 
-      // { ok: true, file: { storedName, size, mimeType } }
-      const storedName = res?.data?.file?.storedName || "";
-      setUploadedUrl(storedName);
-      if (onUpload) onUpload(fileToUpload, storedName);
+      // Handle both S3 and local responses
+      const uploadedPath = res?.data?.url || res?.data?.key || "";
+      setUploadedUrl(uploadedPath);
+      if (onUpload) onUpload(fileToUpload, uploadedPath);
     } catch {
       setError("Upload failed. Please try again.");
       setProgress(0);
