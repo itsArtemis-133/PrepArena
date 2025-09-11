@@ -359,13 +359,30 @@ exports.submitAnswers = async (req, res) => {
       return res.status(403).json({ message: "Submission closed" });
     }
 
-    await Submission.findOneAndUpdate(
-      { testId: id, userId: uid },
-      { $set: { answers: req.body.answers || {}, submittedAt: new Date() } },
-      { upsert: true }
-    );
-    res.json({ ok: true });
+    // Check if already submitted (only allow one submission per user per test)
+    const existingSubmission = await Submission.findOne({ testId: id, userId: uid });
+    if (existingSubmission) {
+      return res.status(409).json({ 
+        message: "Test already submitted", 
+        submittedAt: existingSubmission.submittedAt 
+      });
+    }
+
+    // Create new submission
+    const submission = new Submission({
+      testId: id,
+      userId: uid,
+      answers: req.body.answers || {},
+      submittedAt: new Date()
+    });
+
+    await submission.save();
+    res.json({ ok: true, submittedAt: submission.submittedAt });
   } catch (err) {
+    console.error("Submit answers error:", err);
+    if (err.code === 11000) { // Duplicate key error (MongoDB)
+      return res.status(409).json({ message: "Test already submitted" });
+    }
     res.status(500).json({ message: "Server error" });
   }
 };

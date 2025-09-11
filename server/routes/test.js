@@ -25,6 +25,7 @@ const testController = require("../controllers/testController");
 const feedbackController = require("../controllers/feedbackController");
 const requireAuth = require("../middleware/authMiddleware");
 const optionalAuth = require("../middleware/optionalAuth");
+const s3Service = require("../config/s3");
 
 const Test = require("../models/Test"); // model import
 
@@ -119,7 +120,8 @@ router.post("/test/upload-answers", requireAuth, upload.single("file"), async (r
 
 /* --------------------------- Secure PDF downloads --------------------------- */
 /**
- * We support two storage styles (based on your current schema):
+ * We support three storage styles:
+ *  - S3: pdfUrl/answersPdfUrl stores the S3 key, we generate signed URLs
  *  - Local (disk): pdfUrl/answersPdfUrl stores the stored filename (no path),
  *    we resolve it against UPLOAD_DIR. (Recommended for Render disk)
  *  - Remote: pdfUrl/answersPdfUrl is "http(s)://..." → proxied via axios.
@@ -156,8 +158,22 @@ function resolveLocalPathFromStoredName(storedNameOrLegacy) {
   return path.join(UPLOAD_DIR, safe);
 }
 
-async function streamLocalOrRemotePdf(res, urlish, downloadName) {
-  // Remote http(s): proxy-stream
+async function streamFileResponse(res, urlish, downloadName) {
+  // Priority 1: Check if it's an S3 key and S3 is configured
+  if (s3Service.isConfigured && urlish && !urlish.startsWith("http") && (urlish.includes("uploads/") || urlish.includes("__"))) {
+    try {
+      const key = s3Service.extractKeyFromUrl(urlish);
+      const signedUrl = await s3Service.getSignedUrl(key, 3600); // 1 hour expiry
+      
+      // Redirect to signed URL instead of proxying
+      return res.redirect(signedUrl);
+    } catch (error) {
+      console.error("S3 signed URL error:", error);
+      return res.status(404).json({ message: "File not found in S3" });
+    }
+  }
+
+  // Priority 2: Remote http(s): proxy-stream
   if (typeof urlish === "string" && /^https?:\/\//i.test(urlish)) {
     try {
       const upstream = await axios.get(urlish, { responseType: "stream" });
@@ -176,7 +192,7 @@ async function streamLocalOrRemotePdf(res, urlish, downloadName) {
     }
   }
 
-  // Local file stored under UPLOAD_DIR
+  // Priority 3: Local file stored under UPLOAD_DIR
   const filePath = resolveLocalPathFromStoredName(urlish);
   if (!filePath || !fs.existsSync(filePath)) {
     return res.status(404).json({ message: "File not found" });
@@ -217,7 +233,7 @@ router.get("/test/:id/pdf", requireAuth, async (req, res) => {
     }
 
     const name = `${test.title || "Question Paper"}`;
-    return streamLocalOrRemotePdf(res, test.pdfUrl, name);
+    return streamFileResponse(res, test.pdfUrl, name);
   } catch (e) {
     console.error("GET /test/:id/pdf error:", e.message);
     return res.status(500).json({ message: "Server error" });
@@ -250,7 +266,7 @@ router.get("/test/:id/answers-pdf", requireAuth, async (req, res) => {
     }
 
     const name = `${test.title || "Official Answers"}`;
-    return streamLocalOrRemotePdf(res, test.answersPdfUrl, name);
+    return streamFileResponse(res, test.answersPdfUrl, name);
   } catch (e) {
     console.error("GET /test/:id/answers-pdf error:", e.message);
     return res.status(500).json({ message: "Server error" });
