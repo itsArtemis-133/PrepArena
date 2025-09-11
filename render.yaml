@@ -24,8 +24,17 @@ services:
         value: ""          # can leave empty or same value as MONGO_URI
       - key: JWT_SECRET
         value: ""          # set on Render
+      # AWS S3 Configuration (Required for persistent file storage)
+      - key: AWS_ACCESS_KEY_ID
+        value: ""          # set on Render
+      - key: AWS_SECRET_ACCESS_KEY
+        value: ""          # set on Render  
+      - key: AWS_REGION
+        value: "us-east-1"
+      - key: AWS_S3_BUCKET
+        value: "preparena-uploads"  # or your bucket name
       - key: UPLOAD_DIR
-        value: /data/uploads
+        value: /data/uploads  # fallback for local storage
       - key: CORS_ORIGINS
         value: "https://preparena.vercel.app,https://*.vercel.app,https://preparena.in"
       - key: EXTRACTOR_URL

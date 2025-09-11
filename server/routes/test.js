@@ -25,6 +25,7 @@ const testController = require("../controllers/testController");
 const feedbackController = require("../controllers/feedbackController");
 const requireAuth = require("../middleware/authMiddleware");
 const optionalAuth = require("../middleware/optionalAuth");
+const { getSignedUrl, isS3Configured } = require("../config/s3");
 
 const Test = require("../models/Test"); // model import
 
@@ -157,6 +158,28 @@ function resolveLocalPathFromStoredName(storedNameOrLegacy) {
 }
 
 async function streamLocalOrRemotePdf(res, urlish, downloadName) {
+  // Check if it's an S3 key (no protocol prefix)
+  if (isS3Configured() && urlish && !urlish.startsWith('http') && !urlish.startsWith('/')) {
+    try {
+      // Generate signed URL for S3 object
+      const signedUrl = getSignedUrl(urlish, 3600); // 1 hour expiry
+      const upstream = await axios.get(signedUrl, { responseType: "stream" });
+      res.setHeader(
+        "Content-Type",
+        upstream.headers["content-type"] || "application/pdf"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${sanitizeFilename(downloadName, "file")}.pdf"`
+      );
+      upstream.data.on("error", () => res.status(500).end());
+      return upstream.data.pipe(res);
+    } catch (e) {
+      console.error("S3 file access error:", e.message);
+      return res.status(404).json({ message: "File not found or expired" });
+    }
+  }
+
   // Remote http(s): proxy-stream
   if (typeof urlish === "string" && /^https?:\/\//i.test(urlish)) {
     try {
