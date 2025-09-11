@@ -1,5 +1,5 @@
 // client/src/pages/TestRunner.jsx
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "../api/axiosConfig";
 import OptionGrid from "../components/OptionGrid";
@@ -16,6 +16,7 @@ export default function TestRunner() {
   const [disableGrid, setDisableGrid] = useState(true);
   const [submitState, setSubmitState] = useState("idle"); // idle | submitting | done
   const [regChecked, setRegChecked] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false); // Track if already submitted
 
   // PDF (secured) state
   const [pdfBlobUrl, setPdfBlobUrl] = useState("");
@@ -132,6 +133,55 @@ export default function TestRunner() {
     else enterFullscreen();
   };
 
+  // ---- State persistence helper functions ----
+  const getStorageKey = useCallback((testId) => `test_answers_${testId}`, []);
+  const getSubmissionKey = useCallback((testId) => `test_submitted_${testId}`, []);
+
+  const saveAnswersToStorage = useCallback((testId, answersObj) => {
+    try {
+      localStorage.setItem(getStorageKey(testId), JSON.stringify(answersObj));
+    } catch (error) {
+      console.warn("Failed to save answers to localStorage:", error);
+    }
+  }, [getStorageKey]);
+
+  const loadAnswersFromStorage = useCallback((testId) => {
+    try {
+      const saved = localStorage.getItem(getStorageKey(testId));
+      return saved ? JSON.parse(saved) : {};
+    } catch (error) {
+      console.warn("Failed to load answers from localStorage:", error);
+      return {};
+    }
+  }, [getStorageKey]);
+
+  const markAsSubmitted = useCallback((testId) => {
+    try {
+      localStorage.setItem(getSubmissionKey(testId), "true");
+      setIsSubmitted(true);
+    } catch (error) {
+      console.warn("Failed to mark test as submitted:", error);
+    }
+  }, [getSubmissionKey]);
+
+  const checkIfSubmitted = useCallback((testId) => {
+    try {
+      return localStorage.getItem(getSubmissionKey(testId)) === "true";
+    } catch (error) {
+      console.warn("Failed to check submission status:", error);
+      return false;
+    }
+  }, [getSubmissionKey]);
+
+  const clearTestData = useCallback((testId) => {
+    try {
+      localStorage.removeItem(getStorageKey(testId));
+      localStorage.removeItem(getSubmissionKey(testId));
+    } catch (error) {
+      console.warn("Failed to clear test data:", error);
+    }
+  }, [getStorageKey, getSubmissionKey]);
+
   // ---- data fetching ----
   useEffect(() => {
     let cancel = false;
@@ -181,6 +231,37 @@ export default function TestRunner() {
 
   // derive testId once we have test
   const testId = useMemo(() => (test?._id || test?.id || ""), [test]);
+
+  // Load saved answers and check submission status when test is loaded
+  useEffect(() => {
+    if (!testId) return;
+    
+    // Check if already submitted
+    if (checkIfSubmitted(testId)) {
+      setIsSubmitted(true);
+      setDisableGrid(true);
+      setSubmitState("done");
+      setEndOverlay({ show: true, status: "done" });
+      return;
+    }
+
+    // Load saved answers
+    const savedAnswers = loadAnswersFromStorage(testId);
+    if (Object.keys(savedAnswers).length > 0) {
+      setAnswers(savedAnswers);
+    }
+  }, [testId, checkIfSubmitted, loadAnswersFromStorage]);
+
+  // Save answers to localStorage whenever they change
+  useEffect(() => {
+    if (!testId || isSubmitted) return;
+    
+    const timeoutId = setTimeout(() => {
+      saveAnswersToStorage(testId, answers);
+    }, 500); // Debounce saves
+
+    return () => clearTimeout(timeoutId);
+  }, [answers, testId, isSubmitted, saveAnswersToStorage]);
 
   // Securely fetch the PDF (auth-protected route) and create a blob URL
   useEffect(() => {
@@ -232,7 +313,7 @@ export default function TestRunner() {
   };
 
   const handleSubmit = async () => {
-    if (!isTestStarted || disableGrid || submitState !== "idle") return;
+    if (!isTestStarted || disableGrid || submitState !== "idle" || isSubmitted) return;
     setSubmitState("submitting");
     setEndOverlay({ show: true, status: "submitting" }); // smooth overlay, no scroll jump
     try {
@@ -240,6 +321,11 @@ export default function TestRunner() {
       setSubmitState("done");
       setEndOverlay({ show: true, status: "done" });
       showToast("Test submitted successfully.", "success");
+      
+      // Mark as submitted and clear auto-save data
+      markAsSubmitted(tId);
+      clearTestData(tId);
+      
       // Optionally navigate back to Bridge after a brief pause:
       // setTimeout(() => navigate(`/test/${link}`), 900);
     } catch (err) {
@@ -247,6 +333,12 @@ export default function TestRunner() {
       setEndOverlay({ show: true, status: "error" });
       if (code === 403) {
         showToast("Submission closed: test is not live.", "error", 2800);
+      } else if (code === 409) {
+        // Already submitted
+        showToast("Test already submitted.", "error", 2800);
+        markAsSubmitted(tId);
+        setSubmitState("done");
+        setEndOverlay({ show: true, status: "done" });
       } else {
         showToast("Failed to submit. Please try again.", "error", 2800);
       }
@@ -254,6 +346,52 @@ export default function TestRunner() {
       setTimeout(() => setEndOverlay({ show: false, status: "submitting" }), 1200);
     }
   };
+
+  // Handle page visibility changes to prevent cheating
+  useEffect(() => {
+    if (!isTestStarted || isSubmitted) return;
+
+    let blurCount = 0;
+    const maxBlurs = 3; // Allow some blurs for normal use
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        blurCount++;
+        if (blurCount >= maxBlurs) {
+          showToast(`Warning: Tab switching detected (${blurCount}/${maxBlurs}). Excessive switching may lead to auto-submission.`, "error", 4000);
+        }
+      }
+    };
+
+    const handleBlur = () => {
+      blurCount++;
+      if (blurCount >= maxBlurs) {
+        showToast(`Warning: Window lost focus (${blurCount}/${maxBlurs}). Excessive focus loss may lead to auto-submission.`, "error", 4000);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [isTestStarted, isSubmitted]);
+
+  // Prevent accidental page reload/navigation during test
+  useEffect(() => {
+    if (!isTestStarted || isSubmitted) return;
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "Are you sure you want to leave? Your test progress may be lost.";
+      return "Are you sure you want to leave? Your test progress may be lost.";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isTestStarted, isSubmitted]);
 
   // keep scroll contained within panes; never bubble to body
   const runnerStyle = { height: `calc(100vh - ${headerH}px)` };
@@ -318,13 +456,17 @@ export default function TestRunner() {
         <div
           ref={scrollPaneRef}
           className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
-          style={{ overscrollBehavior: "contain" }}
+          style={{ 
+            overscrollBehavior: "contain",
+            scrollBehavior: "smooth" // Prevent sudden jumps
+          }}
         >
           <OptionGrid
             questionCount={questionCount}
             answers={answers}
-            disabled={disableGrid}
-            onChange={(qIdx, opt) =>
+            disabled={disableGrid || isSubmitted}
+            onChange={(qIdx, opt) => {
+              if (isSubmitted) return; // Prevent changes after submission
               setAnswers((prev) => {
                 const next = { ...prev };
                 if (opt === undefined || opt === null || opt === "") {
@@ -333,8 +475,8 @@ export default function TestRunner() {
                   next[qIdx] = opt;
                 }
                 return next;
-              })
-            }
+              });
+            }}
           />
         </div>
 
@@ -345,15 +487,19 @@ export default function TestRunner() {
         >
           <button
             onClick={handleSubmit}
-            disabled={disableGrid || submitState !== "idle"}
+            disabled={disableGrid || submitState !== "idle" || isSubmitted}
             className={`w-full py-3 text-lg rounded-xl font-semibold shadow-lg transition-all
-              bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white
-              ${disableGrid || submitState !== "idle" ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.02] active:scale-95"}
+              ${isSubmitted 
+                ? "bg-green-600 text-white cursor-not-allowed" 
+                : "bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white"
+              }
+              ${(disableGrid || submitState !== "idle" || isSubmitted) ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.02] active:scale-95"}
             `}
           >
-            {submitState === "idle" && "Submit Test"}
-            {submitState === "submitting" && "Submitting..."}
-            {submitState === "done" && "Submitted!"}
+            {isSubmitted && "Already Submitted"}
+            {!isSubmitted && submitState === "idle" && "Submit Test"}
+            {!isSubmitted && submitState === "submitting" && "Submitting..."}
+            {!isSubmitted && submitState === "done" && "Submitted!"}
           </button>
         </div>
       </div>
@@ -370,8 +516,8 @@ export default function TestRunner() {
             )}
             {endOverlay.status === "done" && (
               <>
-                <div className="text-lg font-semibold mb-1 text-emerald-600">Submitted!</div>
-                <div className="text-slate-600 dark:text-slate-400 text-sm">Your answers have been saved.</div>
+                <div className="text-lg font-semibold mb-1 text-emerald-600">Test Submitted!</div>
+                <div className="text-slate-600 dark:text-slate-400 text-sm">Your answers have been saved. You cannot re-enter this test.</div>
                 <div className="mt-4 flex gap-2 justify-center">
                   <button
                     onClick={() => navigate(`/test/${link}`)}
@@ -379,25 +525,19 @@ export default function TestRunner() {
                   >
                     Back to Test
                   </button>
-                  <button
-                    onClick={() => setEndOverlay({ show: false, status: "submitting" })}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    Stay here
-                  </button>
                 </div>
               </>
             )}
             {endOverlay.status === "error" && (
               <>
-                <div className="text-lg font-semibold mb-1 text-red-600">Submission failed</div>
-                <div className="text-slate-600 dark:text-slate-400 text-sm">Please try again.</div>
-                <div className="mt-4">
+                <div className="text-lg font-semibold mb-1 text-red-600">Submission Failed</div>
+                <div className="text-slate-600 dark:text-slate-400 text-sm">Please try submitting again.</div>
+                <div className="mt-4 flex gap-2 justify-center">
                   <button
                     onClick={() => setEndOverlay({ show: false, status: "submitting" })}
                     className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
                   >
-                    Close
+                    Try Again
                   </button>
                 </div>
               </>
