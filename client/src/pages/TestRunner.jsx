@@ -1,5 +1,5 @@
 // client/src/pages/TestRunner.jsx
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "../api/axiosConfig";
 import OptionGrid from "../components/OptionGrid";
@@ -35,6 +35,9 @@ export default function TestRunner() {
   const runnerRef = useRef(null);
   const scrollPaneRef = useRef(null);
   const [headerH, setHeaderH] = useState(0);
+
+  // Prevent auto-scroll to submit button
+  const isSubmittingRef = useRef(false);
 
   const measureHeader = () => {
     const headerEl = document.querySelector("header");
@@ -156,7 +159,7 @@ export default function TestRunner() {
     return () => { cancel = true; };
   }, [link, navigate]);
 
-  // Gate access: must be creator OR registered
+  // Gate access: must be creator OR registered, AND not already submitted
   useEffect(() => {
     if (!test) return;
     let cancel = false;
@@ -166,6 +169,15 @@ export default function TestRunner() {
         if (cancel) return;
         const isReg = Boolean(r.data?.registered);
         const isCreator = Boolean(r.data?.isCreator) || Boolean(test.isCreator);
+        const hasSubmitted = Boolean(r.data?.hasSubmitted);
+        
+        // If user has already submitted and is not the creator, redirect to bridge
+        if (hasSubmitted && !isCreator) {
+          showToast("You have already submitted this test.", "info", 3000);
+          navigate(`/test/${link}`);
+          return;
+        }
+        
         if (!isReg && !isCreator) {
           navigate(`/test/${link}`);
           return;
@@ -177,10 +189,47 @@ export default function TestRunner() {
       }
     })();
     return () => { cancel = true; };
-  }, [link, navigate, test]);
+  }, [link, navigate, test, showToast]);
 
   // derive testId once we have test
   const testId = useMemo(() => (test?._id || test?.id || ""), [test]);
+
+  // Load answers from localStorage when test starts
+  useEffect(() => {
+    if (!testId) return;
+    const storageKey = `test_answers_${testId}`;
+    try {
+      const savedAnswers = localStorage.getItem(storageKey);
+      if (savedAnswers) {
+        const parsed = JSON.parse(savedAnswers);
+        setAnswers(parsed);
+      }
+    } catch (error) {
+      console.warn("Failed to load saved answers:", error);
+    }
+  }, [testId]);
+
+  // Save answers to localStorage whenever they change
+  useEffect(() => {
+    if (!testId || !isTestStarted) return;
+    const storageKey = `test_answers_${testId}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(answers));
+    } catch (error) {
+      console.warn("Failed to save answers:", error);
+    }
+  }, [answers, testId, isTestStarted]);
+
+  // Clear saved answers after successful submission
+  const clearSavedAnswers = () => {
+    if (!testId) return;
+    const storageKey = `test_answers_${testId}`;
+    try {
+      localStorage.removeItem(storageKey);
+    } catch (error) {
+      console.warn("Failed to clear saved answers:", error);
+    }
+  };
 
   // Securely fetch the PDF (auth-protected route) and create a blob URL
   useEffect(() => {
@@ -225,20 +274,22 @@ export default function TestRunner() {
 
   const { duration, questionCount, scheduledDate, _id: tId } = test;
 
-  const showToast = (text, tone = "info", ms = 2200) => {
+  const showToast = useCallback((text, tone = "info", ms = 2200) => {
     setToast({ show: true, text, tone });
     window.clearTimeout((showToast)._t);
     (showToast)._t = window.setTimeout(() => setToast({ show: false, text: "", tone }), ms);
-  };
+  }, []);
 
   const handleSubmit = async () => {
     if (!isTestStarted || disableGrid || submitState !== "idle") return;
+    isSubmittingRef.current = true; // Prevent auto-scroll during submission
     setSubmitState("submitting");
     setEndOverlay({ show: true, status: "submitting" }); // smooth overlay, no scroll jump
     try {
       await axios.post(`/test/${tId}/submit`, { answers });
       setSubmitState("done");
       setEndOverlay({ show: true, status: "done" });
+      clearSavedAnswers(); // Clear localStorage after successful submission
       showToast("Test submitted successfully.", "success");
       // Optionally navigate back to Bridge after a brief pause:
       // setTimeout(() => navigate(`/test/${link}`), 900);
@@ -252,6 +303,8 @@ export default function TestRunner() {
       }
       setSubmitState("idle");
       setTimeout(() => setEndOverlay({ show: false, status: "submitting" }), 1200);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -318,7 +371,10 @@ export default function TestRunner() {
         <div
           ref={scrollPaneRef}
           className="flex-1 overflow-y-auto px-4 py-2 min-h-0"
-          style={{ overscrollBehavior: "contain" }}
+          style={{ 
+            overscrollBehavior: "contain",
+            scrollBehavior: "auto" // Prevent smooth scrolling that might cause unwanted movement
+          }}
         >
           <OptionGrid
             questionCount={questionCount}
@@ -350,6 +406,12 @@ export default function TestRunner() {
               bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white
               ${disableGrid || submitState !== "idle" ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.02] active:scale-95"}
             `}
+            onFocus={(e) => {
+              // Prevent automatic scroll to submit button
+              if (isSubmittingRef.current) {
+                e.target.blur();
+              }
+            }}
           >
             {submitState === "idle" && "Submit Test"}
             {submitState === "submitting" && "Submitting..."}

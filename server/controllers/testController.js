@@ -266,14 +266,28 @@ exports.checkRegistration = async (req, res) => {
     if (!test) return res.status(404).json({ message: "Test not found" });
 
     const uid = req.user?.id;
-    if (!uid) return res.json({ registered: false, isCreator: false });
+    if (!uid) return res.json({ registered: false, isCreator: false, hasSubmitted: false });
 
     const isCreator = String(test.createdBy) === String(uid);
     const registered =
       Array.isArray(test.registrations) &&
       test.registrations.some((id) => String(id) === String(uid));
 
-    res.json({ registered, isCreator });
+    // Check if user has already submitted
+    let hasSubmitted = false;
+    if (Submission) {
+      try {
+        const submission = await Submission.findOne({
+          testId: test._id,
+          userId: uid
+        });
+        hasSubmitted = !!submission;
+      } catch (err) {
+        console.warn("Error checking submission:", err);
+      }
+    }
+
+    res.json({ registered, isCreator, hasSubmitted });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -571,5 +585,38 @@ exports.getMyResult = async (req, res) => {
     });
   } catch (err) {
     res.json({ available: false });
+  }
+};
+
+// GET /api/test/:id/solution
+exports.getSolution = async (req, res) => {
+  try {
+    const test = await Test.findById(req.params.id).lean();
+    if (!test) return res.status(404).json({ message: "Test not found" });
+
+    const w = computeWindow(test);
+    if (!w.isCompleted) {
+      return res.status(403).json({ message: "Solutions available after test completion" });
+    }
+
+    const key = test.answerKey || {};
+    const keys = Object.keys(key).sort((a, b) => Number(a) - Number(b));
+    const zeroIndexed = keys.includes("0");
+
+    const solutions = keys.map((q) => {
+      const displayQ = zeroIndexed ? Number(q) + 1 : Number(q);
+      return {
+        question: displayQ,
+        answer: String(key[q]).toUpperCase()
+      };
+    });
+
+    res.json({
+      available: true,
+      solutions,
+      totalQuestions: keys.length
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
