@@ -250,7 +250,7 @@ export default function TestsCreation() {
 
       const res = await axios.post("/test", payload);
       // Share link stays the same
-      setShareLink(`${window.location.origin}/tests/${res.data.test.link}/take`);
+      setShareLink(`${window.location.origin}/test/${res.data.test.link}`);
       setStep(Steps.length);
     } catch {
       setErrors({ publish: "Failed to create test. Please try again." });

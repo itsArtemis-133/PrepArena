@@ -4,11 +4,8 @@ const express = require("express");
 const path = require("path");
 const cors = require("cors");
 const { connectDB } = require("./config/db");
+const s3Service = require("./config/s3");
 
-/**
- * Optional deps: don't crash if not installed locally.
- * We'll log a warning and proceed without them.
- */
 let helmet = null;
 let rateLimit = null;
 try {
@@ -23,11 +20,8 @@ try {
 }
 
 const app = express();
-
-/* ---------- trust proxy (needed behind vercel/nginx/render) ---------- */
 app.set("trust proxy", 1);
 
-/* ---------- Security headers (optional) ---------- */
 if (helmet) {
   app.use(
     helmet({
@@ -36,29 +30,20 @@ if (helmet) {
   );
 }
 
-/* ---------- CORS (allow-list via env with wildcard support) ---------- */
-// Accept either CORS_ORIGIN or CORS_ORIGINS (comma-separated)
-// e.g. "http://localhost:5173,https://preparena.vercel.app,https://*.vercel.app"
+// --- CORS setup (same as your version) ---
 const rawEnv = (process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || "").trim();
 const allowAll = rawEnv === "*";
 let allowList = allowAll
   ? []
-  : rawEnv
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+  : rawEnv.split(",").map((s) => s.trim()).filter(Boolean);
 
-// Dev safeguard: don’t lock yourself out locally
 if (!allowAll && allowList.length === 0) {
   allowList = ["http://localhost:5173", "http://127.0.0.1:5173"];
   if (process.env.NODE_ENV !== "production") {
-    console.warn(
-      "[CORS] No CORS origins configured; defaulting to http://localhost:5173 for development."
-    );
+    console.warn("[CORS] Defaulting to localhost for development.");
   }
 }
 
-// Build matchers to support wildcards like https://*.vercel.app
 function buildMatcher(entry) {
   if (entry === "*") return () => true;
   if (entry.startsWith("https://*.")) {
@@ -69,15 +54,14 @@ function buildMatcher(entry) {
     const suffix = entry.replace("http://*.", "");
     return (origin) => !!origin && origin.startsWith("http://") && origin.endsWith("." + suffix);
   }
-  return (origin) => origin === entry; // exact match
+  return (origin) => origin === entry;
 }
 const allowMatchers = allowList.map(buildMatcher);
 
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow non-browser tools (curl/health checks) with no Origin header
-      if (!origin) return cb(null, true);
+      if (!origin) return cb(null, true); // allow curl/postman
       if (allowAll) return cb(null, true);
       if (allowMatchers.some((fn) => fn(origin))) return cb(null, true);
       return cb(new Error("Not allowed by CORS: " + origin));
@@ -88,17 +72,12 @@ app.use(
   })
 );
 
-// ✅ Preflight convenience (use a regex literal, not "(.*)" or "*")
 app.options(/.*/, cors());
-
-/* ---------- Body parsing ---------- */
 app.use(express.json({ limit: "10mb" }));
 
-/* ---------- Rate limiting (API-wide, optional) ---------- */
+// --- Rate limiting ---
 if (rateLimit) {
   const isProd = process.env.NODE_ENV === "production";
-
-  // Very relaxed in dev
   const maxRequests = isProd
     ? Number(process.env.SUBMIT_RATE_PER_MIN || 600)
     : 10000;
@@ -117,22 +96,24 @@ if (rateLimit) {
   console.warn("[WARN] Rate limiting disabled (express-rate-limit not found).");
 }
 
-/* ---------- IMPORTANT: no public /uploads ---------- */
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// --- IMPORTANT: serve /uploads only in local dev ---
+if (!s3Service.isConfigured) {
+  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+}
 
-/* ---------- Routes ---------- */
+// --- Routes ---
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api", require("./routes/api"));
-app.use("/api", require("./routes/test"));    // secure /test/:id/pdf, /answers-pdf
-app.use("/api", require("./routes/upload"));  // disk-backed uploads
+app.use("/api", require("./routes/test"));   // test routes
+app.use("/api", require("./routes/upload")); // upload routes
 
-/* ---------- Health ---------- */
+// --- Health ---
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-/* ---------- Not found (API) ---------- */
+// --- Not found handler ---
 app.use("/api", (_req, res) => res.status(404).json({ message: "Not found" }));
 
-/* ---------- Error handler (JSON, incl. CORS errors) ---------- */
+// --- Error handler ---
 app.use((err, _req, res, _next) => {
   const msg = err && (err.message || err.toString());
   const isCors = msg && msg.startsWith("Not allowed by CORS");
@@ -148,7 +129,6 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 8000;
-
 (async () => {
   try {
     await connectDB();
@@ -159,7 +139,6 @@ const PORT = process.env.PORT || 8000;
   }
 })();
 
-/* ---------- Graceful shutdown ---------- */
 process.on("SIGINT", async () => {
   try {
     await require("mongoose").disconnect();

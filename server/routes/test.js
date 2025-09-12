@@ -1,17 +1,16 @@
-// server/routes/test.js
 const express = require("express");
 const router = express.Router();
 
 const multer = require("multer");
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB for in-memory extractor proxy
+  limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ok =
-     file.mimetype === "application/pdf" ||
-    (typeof file.originalname === "string" &&
-       file.originalname.toLowerCase().endsWith(".pdf"));
-  if (!ok) return cb(new Error("Only PDF files are allowed"));
+      file.mimetype === "application/pdf" ||
+      (typeof file.originalname === "string" &&
+        file.originalname.toLowerCase().endsWith(".pdf"));
+    if (!ok) return cb(new Error("Only PDF files are allowed"));
     cb(null, true);
   },
 });
@@ -27,7 +26,7 @@ const requireAuth = require("../middleware/authMiddleware");
 const optionalAuth = require("../middleware/optionalAuth");
 const s3Service = require("../config/s3");
 
-const Test = require("../models/Test"); // model import
+const Test = require("../models/Test");
 
 // Helper: return a no-op 501 handler if a controller method is missing
 const h = (fn) =>
@@ -64,17 +63,12 @@ router.post("/test/:id/feedback", requireAuth, h(feedbackController.upsertFeedba
 router.delete("/test/:id/feedback", requireAuth, h(feedbackController.deleteFeedback));
 
 /* --------------- Answer-key extraction proxy (Python microservice) ---------- */
-/**
- * Uses EXTRACTOR_URL (e.g., https://preparena-extractor.onrender.com)
- * and EXTRACTOR_AUTH_TOKEN for a simple bearer auth.
- * Sends the uploaded file (field: "file") plus "max_q" (integer).
- */
 router.post("/test/upload-answers", requireAuth, upload.single("file"), async (req, res) => {
   try {
     const maxQ = Math.max(1, Math.min(400, parseInt(req.body.max_q || "100", 10)));
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const extractorUrl = process.env.EXTRACTOR_URL; // REQUIRED in env for microservice mode
+    const extractorUrl = process.env.EXTRACTOR_URL;
     if (!extractorUrl) {
       return res.status(500).json({ message: "Extractor URL not configured" });
     }
@@ -85,7 +79,6 @@ router.post("/test/upload-answers", requireAuth, upload.single("file"), async (r
       filename: req.file.originalname,
       contentType: req.file.mimetype,
     });
-    // IMPORTANT: your extractor expects max_q as a simple form field
     form.append("max_q", String(maxQ));
 
     const py = await axios.post(`${extractorUrl.replace(/\/+$/, "")}/extract`, form, {
@@ -98,7 +91,6 @@ router.post("/test/upload-answers", requireAuth, upload.single("file"), async (r
       timeout: 120000,
     });
 
-    // Accept either { answers: {...} } or { ok:true, data:{ answers:{...} } }
     const payload = py.data || {};
     const raw =
       payload.answers ||
@@ -113,23 +105,12 @@ router.post("/test/upload-answers", requireAuth, upload.single("file"), async (r
     return res.json({ answers });
   } catch (err) {
     console.error("upload-answers error:", err.response?.data || err.message);
-    // Do not block the creation flow — return empty to let UI continue gracefully
     return res.json({ answers: {} });
   }
 });
 
 /* --------------------------- Secure PDF downloads --------------------------- */
-/**
- * We support three storage styles:
- *  - S3: pdfUrl/answersPdfUrl stores the S3 key, we generate signed URLs
- *  - Local (disk): pdfUrl/answersPdfUrl stores the stored filename (no path),
- *    we resolve it against UPLOAD_DIR. (Recommended for Render disk)
- *  - Remote: pdfUrl/answersPdfUrl is "http(s)://..." → proxied via axios.
- */
-
-const UPLOAD_DIR =
-  process.env.UPLOAD_DIR ||
-  path.join(__dirname, "..", "uploads"); // fallback for local dev
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 
 function testIsOver(testDoc) {
   if (!testDoc?.scheduledDate || !testDoc?.duration) return false;
@@ -139,6 +120,17 @@ function testIsOver(testDoc) {
   return Date.now() > end.getTime();
 }
 
+function computeWindow(testDoc) {
+  if (!testDoc?.scheduledDate || !testDoc?.duration) return { isLive: false, isCompleted: false };
+  const start = new Date(testDoc.scheduledDate).getTime();
+  const end = start + Number(testDoc.duration) * 60 * 1000;
+  const now = Date.now();
+  return {
+    isLive: now >= start && now < end,
+    isCompleted: now >= end,
+  };
+}
+
 function sanitizeFilename(name, fallback) {
   const base = (name || fallback || "file").toString().trim();
   return base.replace(/[<>:"/\\|?*\x00-\x1F]/g, "").slice(0, 180);
@@ -146,62 +138,43 @@ function sanitizeFilename(name, fallback) {
 
 function resolveLocalPathFromStoredName(storedNameOrLegacy) {
   if (!storedNameOrLegacy) return null;
-
-  // Backward compat: if someone persisted /uploads/<file>, strip prefix
   let fname = storedNameOrLegacy;
   if (typeof fname === "string" && fname.startsWith("/uploads/")) {
     fname = fname.replace(/^\/uploads\//, "");
   }
-
-  // Keep only basename to avoid traversal
   const safe = path.basename(fname);
   return path.join(UPLOAD_DIR, safe);
 }
 
 async function streamFileResponse(res, urlish, downloadName) {
-  // Priority 1: Check if it's an S3 key and S3 is configured
-  if (s3Service.isConfigured && urlish && !urlish.startsWith("http") && (urlish.includes("uploads/") || urlish.includes("__"))) {
+  if (s3Service.isConfigured && urlish && !urlish.startsWith("http") &&
+      (urlish.includes("uploads/") || urlish.includes("__"))) {
     try {
       const key = s3Service.extractKeyFromUrl(urlish);
-      const signedUrl = await s3Service.getSignedUrl(key, 3600); // 1 hour expiry
-      
-      // Redirect to signed URL instead of proxying
+      const signedUrl = await s3Service.getSignedUrl(key, 3600);
       return res.redirect(signedUrl);
     } catch (error) {
       console.error("S3 signed URL error:", error);
       return res.status(404).json({ message: "File not found in S3" });
     }
   }
-
-  // Priority 2: Remote http(s): proxy-stream
   if (typeof urlish === "string" && /^https?:\/\//i.test(urlish)) {
     try {
       const upstream = await axios.get(urlish, { responseType: "stream" });
-      res.setHeader(
-        "Content-Type",
-        upstream.headers["content-type"] || "application/pdf"
-      );
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${sanitizeFilename(downloadName, "file")}.pdf"`
-      );
+      res.setHeader("Content-Type", upstream.headers["content-type"] || "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(downloadName, "file")}.pdf"`);
       upstream.data.on("error", () => res.status(500).end());
       return upstream.data.pipe(res);
     } catch (e) {
       return res.status(404).json({ message: "Remote file not reachable" });
     }
   }
-
-  // Priority 3: Local file stored under UPLOAD_DIR
   const filePath = resolveLocalPathFromStoredName(urlish);
   if (!filePath || !fs.existsSync(filePath)) {
     return res.status(404).json({ message: "File not found" });
   }
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader(
-    "Content-Disposition",
-    `attachment; filename="${sanitizeFilename(downloadName, "file")}.pdf"`
-  );
+  res.setHeader("Content-Disposition", `attachment; filename="${sanitizeFilename(downloadName, "file")}.pdf"`);
   const stream = fs.createReadStream(filePath);
   stream.on("error", () => res.status(500).end());
   return stream.pipe(res);
@@ -209,27 +182,32 @@ async function streamFileResponse(res, urlish, downloadName) {
 
 /**
  * GET /api/test/:id/pdf
- * - Creator: allowed anytime
- * - Others: allowed only after test ends
  */
 router.get("/test/:id/pdf", requireAuth, async (req, res) => {
   try {
     const test = await Test.findById(req.params.id).select(
-      "_id title createdBy scheduledDate duration pdfUrl"
+      "_id title createdBy scheduledDate duration pdfUrl registrations"
     );
     if (!test) return res.status(404).json({ message: "Test not found" });
 
-    const isCreator =
-      String(test.createdBy) === String(req.user?._id || req.user?.id);
-    if (!isCreator && !testIsOver(test)) {
-      return res
-        .status(403)
-        .json({ message: "Question paper available after the test ends." });
+    const uid = req.user?._id || req.user?.id;
+    const isCreator = String(test.createdBy) === String(uid);
+    const w = computeWindow(test);
+
+    if (!isCreator) {
+      const registered = Array.isArray(test.registrations) &&
+        test.registrations.some((id) => String(id) === String(uid));
+
+      if (!registered) {
+        return res.status(403).json({ message: "Only registered users can access." });
+      }
+      if (!w.isLive && !w.isCompleted) {
+        return res.status(403).json({ message: "Test not started yet." });
+      }
     }
+
     if (!test.pdfUrl) {
-      return res
-        .status(404)
-        .json({ message: "Question paper not uploaded." });
+      return res.status(404).json({ message: "Question paper not uploaded." });
     }
 
     const name = `${test.title || "Question Paper"}`;
@@ -242,27 +220,32 @@ router.get("/test/:id/pdf", requireAuth, async (req, res) => {
 
 /**
  * GET /api/test/:id/answers-pdf
- * - Creator: allowed anytime
- * - Others: allowed only after test ends
  */
 router.get("/test/:id/answers-pdf", requireAuth, async (req, res) => {
   try {
     const test = await Test.findById(req.params.id).select(
-      "_id title createdBy scheduledDate duration answersPdfUrl"
+      "_id title createdBy scheduledDate duration answersPdfUrl registrations"
     );
     if (!test) return res.status(404).json({ message: "Test not found" });
 
-    const isCreator =
-      String(test.createdBy) === String(req.user?._id || req.user?.id);
-    if (!isCreator && !testIsOver(test)) {
-      return res
-        .status(403)
-        .json({ message: "Official answers available after the test ends." });
+    const uid = req.user?._id || req.user?.id;
+    const isCreator = String(test.createdBy) === String(uid);
+    const w = computeWindow(test);
+
+    if (!isCreator) {
+      const registered = Array.isArray(test.registrations) &&
+        test.registrations.some((id) => String(id) === String(uid));
+
+      if (!registered) {
+        return res.status(403).json({ message: "Only registered users can access." });
+      }
+      if (!w.isCompleted) {
+        return res.status(403).json({ message: "Official answers available after the test ends." });
+      }
     }
+
     if (!test.answersPdfUrl) {
-      return res
-        .status(404)
-        .json({ message: "Official answers PDF not uploaded." });
+      return res.status(404).json({ message: "Official answers PDF not uploaded." });
     }
 
     const name = `${test.title || "Official Answers"}`;
