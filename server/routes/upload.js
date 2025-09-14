@@ -1,4 +1,3 @@
-// server/routes/upload.js
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -8,18 +7,17 @@ const s3Service = require("../config/s3");
 
 const router = express.Router();
 
-const UPLOAD_DIR =
-  process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
 
-// Ensure directory exists for local fallback
+// Ensure local directory exists for fallback
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 /**
  * Configure multer for both S3 and local storage
  */
 const storage = s3Service.isConfigured
-  ? multer.memoryStorage() // for S3 uploads
-  : multer.diskStorage({    // local fallback
+  ? multer.memoryStorage() // S3 → keep in memory
+  : multer.diskStorage({   // Local fallback
       destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
       filename: (_req, file, cb) => {
         const ts = Date.now();
@@ -46,8 +44,7 @@ const upload = multer({
 
 /**
  * POST /api/upload
- * Auth required. Stores a single PDF file field named "file".
- * Uses S3 if configured, otherwise falls back to local storage.
+ * Upload a PDF. Returns S3/local key (store this in DB).
  */
 router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
   try {
@@ -63,9 +60,8 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
 
       return res.json({
         ok: true,
-        url: result.key,   // S3 key (store in DB)
-        s3Url: result.url, // Full signed URL
-        key: result.key,
+        key: result.key,       // ✅ Save this in Test.pdfUrl / answersPdfUrl
+        url: result.url,       // Just for preview/debug
         bucket: result.bucket,
       });
     } else {
@@ -73,8 +69,8 @@ router.post("/upload", requireAuth, upload.single("file"), async (req, res) => {
       const storedName = req.file.filename;
       return res.json({
         ok: true,
-        url: `/uploads/${storedName}`, // accessible locally
-        storedName,
+        key: `uploads/${storedName}`,  // ✅ Store this in DB
+        url: `/uploads/${storedName}`, // For local preview
       });
     }
   } catch (error) {

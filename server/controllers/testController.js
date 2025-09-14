@@ -100,14 +100,12 @@ exports.createTest = async (req, res, next) => {
       duration,
       questionCount,
       isPublic = false,
-      pdfUrl,
-      answersPdfUrl,
       answerKey,
     } = req.body;
 
-    // ✅ Map filenames (storedName) -> existing url fields (back-compat friendly)
-    const pdfFilename = req.body?.pdfFilename || "";
-    const answersPdfFilename = req.body?.answersPdfFilename || "";
+    // ✅ Expect `pdfKey` and `answersPdfKey` from frontend (not URLs)
+    const pdfKey = req.body?.pdfKey || "";
+    const answersPdfKey = req.body?.answersPdfKey || "";
 
     const userId = req.user?.id || null;
 
@@ -123,9 +121,9 @@ exports.createTest = async (req, res, next) => {
       questionCount: n(questionCount),
       isPublic: !!isPublic,
 
-      // Store the storedName in these existing fields (your streamers already handle it)
-      pdfUrl: pdfFilename || pdfUrl || "",
-      answersPdfUrl: answersPdfFilename || answersPdfUrl || "",
+      // ✅ Store only the S3/local key
+      pdfUrl: pdfKey,
+      answersPdfUrl: answersPdfKey,
 
       answerKey: answerKey || {},
       link: uuidv4(),
@@ -156,13 +154,9 @@ exports.updateTest = async (req, res) => {
       return res.status(400).json({ message: "Cannot modify after start" });
     }
 
-    // ✅ Accept filenames and map to existing fields if provided
-    if (req.body?.pdfFilename && !req.body.pdfUrl) {
-      req.body.pdfUrl = req.body.pdfFilename;
-    }
-    if (req.body?.answersPdfFilename && !req.body.answersPdfUrl) {
-      req.body.answersPdfUrl = req.body.answersPdfFilename;
-    }
+    // ✅ Accept `pdfKey` and `answersPdfKey` from frontend
+    if (req.body?.pdfKey) req.body.pdfUrl = req.body.pdfKey;
+    if (req.body?.answersPdfKey) req.body.answersPdfUrl = req.body.answersPdfKey;
 
     const allowed = [
       "title",
@@ -194,6 +188,7 @@ exports.updateTest = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
 
 // GET /api/test
 exports.getMyTests = async (req, res, next) => {
