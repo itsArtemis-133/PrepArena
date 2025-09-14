@@ -194,9 +194,16 @@ export default function TestsCreation() {
       const res = await axios.post("/upload", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      // Return the URL/key for storage in database
-      return res?.data?.url || "";
-    } catch {
+      // ✅ Robust: accept key or url or filename from server
+      const stored =
+        res?.data?.key ||
+        res?.data?.url ||
+        res?.data?.filename ||
+        res?.data?.path ||
+        "";
+      return String(stored || "");
+    } catch (e) {
+      console.error("Upload failed:", e);
       return "";
     } finally {
       setUploading(false);
@@ -238,7 +245,7 @@ export default function TestsCreation() {
         isPublic,
         subject,
 
-        // ✅ secured storage fields
+        // ✅ secured storage fields (DB stores the key/filename)
         pdfFilename: qFilename,
         answersPdfFilename: aFilename || "",
 
@@ -252,7 +259,8 @@ export default function TestsCreation() {
       // Share link stays the same
       setShareLink(`${window.location.origin}/test/${res.data.test.link}`);
       setStep(Steps.length);
-    } catch {
+    } catch (e) {
+      console.error(e);
       setErrors({ publish: "Failed to create test. Please try again." });
     } finally {
       setPublishing(false);
@@ -279,8 +287,13 @@ export default function TestsCreation() {
       setQuestionPdfFile(selectedFile);
       setQuestionPdfUrl(selectedFile.name); // Use real filename for UI
       setQuestionPdfFilename(""); // This will be set on final submit
+      // clear any previous error
+      setErrors((prev) => {
+        const n = { ...prev };
+        delete n.pdfUrl;
+        return n;
+      });
     } else {
-      // Optional: handle wrong file type
       setErrors({ pdfUrl: "Please select a valid PDF file." });
     }
   };
