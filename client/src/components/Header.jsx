@@ -38,8 +38,10 @@ export default function Header() {
     return () => document.removeEventListener("open-auth-modal", handler);
   }, [openAuth]);
 
+  // Updated Navigation Items
   const baseNav = [
     { to: "/tests", label: "Tests", private: false },
+    { to: "/creator-hub", label: "Creator Hub", private: false }, // <-- ADDED HERE
     { to: "/community", label: "Community", private: false },
     { to: "/resources", label: "Resources", private: false },
   ];

@@ -1,18 +1,18 @@
-// client/src/App.jsx
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 
 // Pages
-import LandingPage   from "./pages/LandingPage";
-import Dashboard     from "./pages/Dashboard";
+import LandingPage from "./pages/LandingPage";
+import Dashboard from "./pages/Dashboard";
 import TestsCreation from "./pages/TestsCreation";
-import TestBridge    from "./pages/TestBridge";
-import TestRunner    from "./pages/TestRunner";
-import TestsHub      from "./pages/TestsHub";
-import Result        from "./pages/Result";
-import Profile       from "./pages/Profile";
+import TestBridge from "./pages/TestBridge";
+import TestRunner from "./pages/TestRunner";
+import TestsHub from "./pages/TestsHub";
+import Result from "./pages/Result";
+import Profile from "./pages/Profile";
+import CreatorHub from "./pages/CreatorHub"; // 1. Import the new page
 
 export default function App() {
   return (
@@ -27,6 +27,9 @@ export default function App() {
 
         {/* PUBLIC Tests Hub (Open tab works without auth; Registered/Upcoming/Past will simply show nothing if token not set) */}
         <Route path="/tests" element={<TestsHub />} />
+        
+        {/* 2. Add the new Creator Hub route (publicly viewable) */}
+        <Route path="/creator-hub" element={<CreatorHub />} />
 
         {/* Protected group (must be logged in) */}
         <Route element={<ProtectedRoute />}>
